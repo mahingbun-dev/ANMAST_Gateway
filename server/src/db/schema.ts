@@ -150,6 +150,11 @@ export const migrations: string[] = [
   ALTER TABLE models ADD COLUMN input_cache_read_price REAL NOT NULL DEFAULT 0;
   ALTER TABLE models ADD COLUMN input_cache_write_price REAL NOT NULL DEFAULT 0;
   `,
+  // v3 —— API Key 绑定 Skill 与 MCP Server
+  `
+  ALTER TABLE api_keys ADD COLUMN skill_ids TEXT NOT NULL DEFAULT '[]';
+  ALTER TABLE api_keys ADD COLUMN mcp_server_ids TEXT NOT NULL DEFAULT '[]';
+  `,
 ];
 
 export const DEFAULT_TIERS: { id: string; name: string; description: string; sort: number }[] = [

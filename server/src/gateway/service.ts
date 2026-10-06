@@ -3,8 +3,10 @@ import type { Usage, NormalizedRequest } from "../providers/types.js";
 import { getAdapter } from "../providers/index.js";
 import { resolveModel, autoDetectComplexity, type ModelWithProvider } from "../routing/index.js";
 import { resolveActiveSkills, buildSkillSystemPrompt, getSkillToolNames } from "../skills/manager.js";
-import { listAllTools, findToolOwner, callToolOnServer } from "../mcp/manager.js";
+import { listAllTools, listToolsFromServers, findToolOwner, callToolOnServer } from "../mcp/manager.js";
 import { getSetting } from "../db/index.js";
+import { getApiKey } from "../db/repos/auth.js";
+import { listSkills } from "../db/repos/ext.js";
 import {
   insertRequest,
   updateRequest,
@@ -83,6 +85,16 @@ function dedupeTools(tools: ToolDefinition[]): ToolDefinition[] {
     seen.add(t.function.name);
     return true;
   });
+}
+
+function parseStringArray(s: string | undefined): string[] {
+  if (!s) return [];
+  try {
+    const a = JSON.parse(s);
+    return Array.isArray(a) ? a.map(String) : [];
+  } catch {
+    return [];
+  }
 }
 
 function safeJson(x: unknown): string | null {
@@ -281,23 +293,45 @@ export async function processChat(input: ProcessInput): Promise<GatewayResult> {
   if (viaAuto) target = { ...target, tierSource: "auto", viaAutoDetect: true };
   if (explicitTier) target.usedComplexity = explicitTier;
 
-  // 2. Skill 与工具
+  // 2. Skill 与工具（含按 API Key 配置的 Skill / MCP）
+  const keyCfg = apiKeyId ? getApiKey(apiKeyId) : undefined;
+  const keySkillIds = keyCfg ? parseStringArray(keyCfg.skill_ids) : [];
+  const keyMcpIds = keyCfg ? parseStringArray(keyCfg.mcp_server_ids) : [];
+
   const activeSkills = resolveActiveSkills(parsed.skills, parsed.messages);
+  // 追加该 API Key 绑定的 Skill（自动激活，去重）
+  if (keySkillIds.length) {
+    const bound = listSkills().filter((s) => s.enabled && keySkillIds.includes(s.id));
+    const seen = new Set(activeSkills.map((s) => s.id));
+    for (const s of bound) if (!seen.has(s.id)) activeSkills.push(s);
+  }
   const skillPrompt = buildSkillSystemPrompt(activeSkills);
   const skillToolNames = getSkillToolNames(activeSkills);
 
   let gatewayTools: ToolDefinition[] = [];
-  const mcpMode = getSetting<string>("mcp_tools_mode", "on_demand");
-  const wantGateway =
-    mcpMode === "auto" || parsed.gatewayToolsRequested || skillToolNames.length > 0;
-  if (wantGateway) {
+  if (keyMcpIds.length) {
+    // 按 API Key 指定：仅注入这些 MCP Server 的工具（覆盖全局模式）
     try {
-      const allMcp = await listAllTools();
+      const tools = await listToolsFromServers(keyMcpIds);
       gatewayTools = skillToolNames.length
-        ? allMcp.filter((t) => skillToolNames.includes(t.function.name))
-        : allMcp;
+        ? tools.filter((t) => skillToolNames.includes(t.function.name))
+        : tools;
     } catch (e) {
-      logger.warn("获取 MCP 工具失败", e);
+      logger.warn("获取 API Key 绑定的 MCP 工具失败", e);
+    }
+  } else {
+    const mcpMode = getSetting<string>("mcp_tools_mode", "on_demand");
+    const wantGateway =
+      mcpMode === "auto" || parsed.gatewayToolsRequested || skillToolNames.length > 0;
+    if (wantGateway) {
+      try {
+        const allMcp = await listAllTools();
+        gatewayTools = skillToolNames.length
+          ? allMcp.filter((t) => skillToolNames.includes(t.function.name))
+          : allMcp;
+      } catch (e) {
+        logger.warn("获取 MCP 工具失败", e);
+      }
     }
   }
   const allTools = dedupeTools([...parsed.clientTools, ...gatewayTools]);

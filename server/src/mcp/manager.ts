@@ -116,6 +116,22 @@ export async function listAllTools(): Promise<ToolDefinition[]> {
   return all;
 }
 
+/** 获取指定若干 MCP Server 的工具（按需连接） */
+export async function listToolsFromServers(serverIds: string[]): Promise<ToolDefinition[]> {
+  const all: ToolDefinition[] = [];
+  for (const id of serverIds) {
+    const server = getMcpServer(id);
+    if (!server || !server.enabled) continue;
+    try {
+      const tools = await connectServer(id);
+      all.push(...tools);
+    } catch (e) {
+      logger.warn(`MCP Server「${server.name}」连接失败，已跳过`, e);
+    }
+  }
+  return all;
+}
+
 /** 获取指定 MCP Server 的工具 */
 export async function listServerTools(serverId: string): Promise<ToolDefinition[]> {
   try {

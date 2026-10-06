@@ -47,6 +47,8 @@ export interface ApiKey {
   key_prefix: string;
   enabled: number;
   monthly_limit_tokens: number | null;
+  skill_ids: string;
+  mcp_server_ids: string;
   created_at: number;
   last_used_at: number | null;
 }

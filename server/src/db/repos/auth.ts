@@ -13,43 +13,55 @@ export function getApiKeyByHash(hash: string): ApiKey | undefined {
     | undefined;
 }
 
+export function getApiKey(id: string): ApiKey | undefined {
+  return getDb().prepare("SELECT * FROM api_keys WHERE id = ?").get(id) as ApiKey | undefined;
+}
+
 export function createApiKey(
   name: string,
   keyHash: string,
   keyPrefix: string,
   monthlyLimitTokens: number | null,
+  skillIds: string,
+  mcpServerIds: string,
 ): ApiKey {
   const id = `k_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
   const now = Date.now();
   getDb()
     .prepare(
-      `INSERT INTO api_keys (id, name, key_hash, key_prefix, enabled, monthly_limit_tokens, created_at)
-       VALUES (?, ?, ?, ?, 1, ?, ?)`,
+      `INSERT INTO api_keys (id, name, key_hash, key_prefix, enabled, monthly_limit_tokens, skill_ids, mcp_server_ids, created_at)
+       VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?)`,
     )
-    .run(id, name, keyHash, keyPrefix, monthlyLimitTokens, now);
-  return getDb().prepare("SELECT * FROM api_keys WHERE id = ?").get(id) as ApiKey;
+    .run(id, name, keyHash, keyPrefix, monthlyLimitTokens, skillIds, mcpServerIds, now);
+  return getApiKey(id)!;
 }
 
 export function updateApiKey(
   id: string,
-  patch: { name?: string; enabled?: number; monthly_limit_tokens?: number | null },
+  patch: {
+    name?: string;
+    enabled?: number;
+    monthly_limit_tokens?: number | null;
+    skill_ids?: string;
+    mcp_server_ids?: string;
+  },
 ): ApiKey | undefined {
-  const existing = getDb().prepare("SELECT * FROM api_keys WHERE id = ?").get(id) as
-    | ApiKey
-    | undefined;
+  const existing = getApiKey(id);
   if (!existing) return undefined;
   const next = { ...existing, ...patch };
   getDb()
     .prepare(
-      "UPDATE api_keys SET name=?, enabled=?, monthly_limit_tokens=? WHERE id=?",
+      "UPDATE api_keys SET name=?, enabled=?, monthly_limit_tokens=?, skill_ids=?, mcp_server_ids=? WHERE id=?",
     )
     .run(
       next.name,
       next.enabled,
       next.monthly_limit_tokens ?? null,
+      next.skill_ids,
+      next.mcp_server_ids,
       id,
     );
-  return getDb().prepare("SELECT * FROM api_keys WHERE id = ?").get(id) as ApiKey;
+  return getApiKey(id);
 }
 
 export function deleteApiKey(id: string): void {

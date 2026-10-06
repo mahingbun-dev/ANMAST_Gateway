@@ -357,19 +357,42 @@ export function registerAdminRoutes(app: FastifyInstance): void {
     const b = (req.body ?? {}) as Record<string, unknown>;
     const name = String(b.name ?? "默认密钥");
     const limit = b.monthly_limit_tokens ? Number(b.monthly_limit_tokens) : null;
+    const skillIds = Array.isArray(b.skill_ids) ? b.skill_ids.map(String) : [];
+    const mcpIds = Array.isArray(b.mcp_server_ids) ? b.mcp_server_ids.map(String) : [];
     const { key, hash, prefix } = generateApiKey();
-    const row = createApiKey(name, hash, prefix, limit);
+    const row = createApiKey(
+      name,
+      hash,
+      prefix,
+      limit,
+      JSON.stringify(skillIds),
+      JSON.stringify(mcpIds),
+    );
     return reply.code(201).send({ ...row, key });
   });
 
   app.put("/api/keys/:id", async (req, reply) => {
     const id = (req.params as { id: string }).id;
     const b = (req.body ?? {}) as Record<string, unknown>;
-    const patch: { name?: string; enabled?: number; monthly_limit_tokens?: number | null } = {};
+    const patch: {
+      name?: string;
+      enabled?: number;
+      monthly_limit_tokens?: number | null;
+      skill_ids?: string;
+      mcp_server_ids?: string;
+    } = {};
     if (b.name !== undefined) patch.name = String(b.name);
     if (b.enabled !== undefined) patch.enabled = b.enabled ? 1 : 0;
     if (b.monthly_limit_tokens !== undefined)
       patch.monthly_limit_tokens = b.monthly_limit_tokens ? Number(b.monthly_limit_tokens) : null;
+    if (b.skill_ids !== undefined)
+      patch.skill_ids = JSON.stringify(
+        Array.isArray(b.skill_ids) ? b.skill_ids.map(String) : [],
+      );
+    if (b.mcp_server_ids !== undefined)
+      patch.mcp_server_ids = JSON.stringify(
+        Array.isArray(b.mcp_server_ids) ? b.mcp_server_ids.map(String) : [],
+      );
     const k = updateApiKey(id, patch);
     if (!k) return reply.code(404).send({ error: "密钥不存在" });
     return reply.send({ ...k, key_hash: undefined });
