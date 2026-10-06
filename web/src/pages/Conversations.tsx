@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Table, Input, Space, Button, Modal, Tag, Typography, Empty } from "antd";
+import { Table, Input, Space, Button, Modal, Tag, Typography, Empty, Switch } from "antd";
 import { ReloadOutlined } from "@ant-design/icons";
 import { api } from "../api";
 import dayjs from "dayjs";
@@ -27,6 +27,25 @@ const roleColor: Record<string, string> = {
   tool: "purple",
 };
 
+/** 简洁视图：只保留真正的「对话内容」，隐藏提示词、注入上下文、工具调用与分析中间过程 */
+function isConversationContent(m: Message): boolean {
+  const c = (m.content ?? "").trim();
+  // 隐藏系统提示词与工具结果
+  if (m.role === "system" || m.role === "tool") return false;
+  if (m.role === "user") {
+    if (!c) return false;
+    // 隐藏注入的上下文（system-reminder / session / transcript / CLAUDE.md 等）
+    if (c.startsWith("<")) return false;
+    if (c.startsWith("The following is")) return false;
+    return true;
+  }
+  if (m.role === "assistant") {
+    // 有正文才算对话内容（纯工具调用/分析消息隐藏）
+    return !!c;
+  }
+  return true;
+}
+
 export default function Conversations() {
   const [data, setData] = useState<Conversation[]>([]);
   const [total, setTotal] = useState(0);
@@ -35,6 +54,7 @@ export default function Conversations() {
   const [search, setSearch] = useState("");
   const [messages, setMessages] = useState<Message[] | null>(null);
   const [convTitle, setConvTitle] = useState("");
+  const [showAll, setShowAll] = useState(false);
 
   const load = (p = page) => {
     setLoading(true);
@@ -55,9 +75,13 @@ export default function Conversations() {
 
   const open = async (c: Conversation) => {
     setConvTitle(c.title);
+    setShowAll(false);
     const r = await api.get<{ messages: Message[] }>(`/api/conversations/${c.id}`);
     setMessages(r.messages);
   };
+
+  const visible = showAll ? messages ?? [] : (messages ?? []).filter(isConversationContent);
+  const hiddenCount = (messages?.length ?? 0) - visible.length;
 
   return (
     <div>
@@ -103,8 +127,23 @@ export default function Conversations() {
 
       <Modal title={`对话：${convTitle}`} open={!!messages} onCancel={() => setMessages(null)} footer={null} width={760}>
         {messages && messages.length === 0 && <Empty description="暂无消息" />}
+        {messages && messages.length > 0 && (
+          <Space style={{ marginBottom: 12, width: "100%", justifyContent: "space-between" }}>
+            <Switch
+              checked={showAll}
+              onChange={setShowAll}
+              checkedChildren="显示全部"
+              unCheckedChildren="简洁视图"
+            />
+            {!showAll && hiddenCount > 0 ? (
+              <Typography.Text type="secondary">已隐藏 {hiddenCount} 条（提示词/分析/工具）</Typography.Text>
+            ) : (
+              <Typography.Text type="secondary">共 {visible.length} 条</Typography.Text>
+            )}
+          </Space>
+        )}
         <div style={{ maxHeight: 520, overflow: "auto" }}>
-          {(messages ?? []).map((m) => (
+          {visible.map((m) => (
             <div key={m.id} style={{ marginBottom: 12 }}>
               <Space size={8}>
                 <Tag color={roleColor[m.role] ?? "default"}>{m.role}</Tag>
