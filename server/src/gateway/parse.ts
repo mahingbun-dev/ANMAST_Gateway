@@ -180,14 +180,26 @@ export function parseAnthropicRequest(
         : Array.isArray(rawContent)
           ? (rawContent as Record<string, unknown>[])
           : [];
-    // 将 tool_result 块与 tool_use 块分别处理
+    // 将 tool_result 块与 tool_use 块分别处理；text/image 块按顺序保留
     const textParts: string[] = [];
+    const orderedParts: Record<string, unknown>[] = [];
     const toolCalls: ToolCall[] = [];
     const toolResults: { tool_use_id: string; content: string }[] = [];
     for (const b of blocks) {
       const type = b.type as string;
-      if (type === "text") textParts.push((b.text as string) ?? "");
-      else if (type === "tool_use") {
+      if (type === "text") {
+        const t = (b.text as string) ?? "";
+        textParts.push(t);
+        orderedParts.push({ type: "text", text: t });
+      } else if (type === "image") {
+        const src = b.source as { type?: string; url?: string; media_type?: string; data?: string };
+        let url = "";
+        if (src?.type === "url" && src.url) url = src.url;
+        else if (src?.type === "base64" && src.data) {
+          url = `data:${src.media_type ?? "image/png"};base64,${src.data}`;
+        }
+        if (url) orderedParts.push({ type: "image_url", image_url: { url } });
+      } else if (type === "tool_use") {
         toolCalls.push({
           id: (b.id as string) ?? `toolu_${Math.random().toString(36).slice(2, 10)}`,
           type: "function",
@@ -201,6 +213,10 @@ export function parseAnthropicRequest(
         });
       }
     }
+    // 仅当存在图片时设置 contentArray，避免改变纯文本消息的原有行为
+    const hasImage = orderedParts.some((p) => p.type === "image_url");
+    const contentArray = hasImage ? orderedParts : undefined;
+
     if (role === "assistant") {
       messages.push({
         role,
@@ -212,9 +228,11 @@ export function parseAnthropicRequest(
       for (const tr of toolResults) {
         messages.push({ role: "tool", content: tr.content, tool_call_id: tr.tool_use_id });
       }
-      if (textParts.length) messages.push({ role: "user", content: textParts.join("") });
+      if (textParts.length || contentArray) {
+        messages.push({ role: "user", content: textParts.join("") || null, contentArray });
+      }
     } else {
-      messages.push({ role, content: textParts.join("") || null });
+      messages.push({ role, content: textParts.join("") || null, contentArray });
     }
   }
 
