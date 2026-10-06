@@ -13,7 +13,7 @@ import {
   insertMessages,
   upsertConversation,
   bumpConversation,
-  getConversation,
+  listMessagesByConversation,
 } from "../db/repos/logs.js";
 import type { ParsedRequest } from "./parse.js";
 import {
@@ -576,6 +576,33 @@ async function* streamPassthrough(ctx: PassthroughCtx): AsyncIterable<string | U
   }
 }
 
+/** 消息去重签名：role + content + tool_call_id + 工具名列表（忽略易变的参数序列化细节） */
+function msgSignature(m: {
+  role: string;
+  content: string | null;
+  tool_call_id?: string | null;
+  tool_calls?: unknown;
+}): string {
+  let names = "";
+  const tc = m.tool_calls;
+  if (Array.isArray(tc)) {
+    names = tc
+      .map((t) => (t as { function?: { name?: string } }).function?.name ?? "")
+      .sort()
+      .join(",");
+  } else if (typeof tc === "string" && tc) {
+    try {
+      const arr = JSON.parse(tc);
+      if (Array.isArray(arr)) {
+        names = arr.map((t) => t?.function?.name ?? "").sort().join(",");
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+  return `${m.role}\u0000${m.content ?? ""}\u0000${m.tool_call_id ?? ""}\u0000${names}`;
+}
+
 function logMessages(
   input: ChatMessage[],
   toolMessages: ChatMessage[],
@@ -594,14 +621,17 @@ function logMessages(
     tool_call_id: m.tool_call_id ?? null,
     created_at: createdAt,
   });
-  // 多轮 agent 循环的请求是「累积式」的：每次都携带完整历史。跳过已记录的前缀，避免同一会话重复记录。
-  const existing = getConversation(conversationId)?.message_count ?? 0;
-  const newInput = input.slice(Math.min(existing, input.length));
-  const rows = [
-    ...newInput.map(toLog),
-    ...toolMessages.map(toLog),
-    toLog(assistant),
-  ];
+  // 多轮 agent 循环的请求是「累积式」的（主线程重复携带历史），且同会话可能交织多个子代理线程，
+  // 因此按内容签名去重，而不是按位置。
+  const existing = listMessagesByConversation(conversationId);
+  const seen = new Set(existing.map(msgSignature));
+  const rows: ReturnType<typeof toLog>[] = [];
+  for (const m of [...input, ...toolMessages, assistant]) {
+    const sig = msgSignature(m);
+    if (seen.has(sig)) continue;
+    seen.add(sig);
+    rows.push(toLog(m));
+  }
   insertMessages(rows);
   return rows.length;
 }
