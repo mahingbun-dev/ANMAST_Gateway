@@ -162,23 +162,53 @@ export async function* fakeAnthropicStream(
       usage: { input_tokens: inputTokens, output_tokens: 1 },
     },
   })}\n\n`;
-  yield `event: content_block_start\ndata: ${JSON.stringify({
-    type: "content_block_start",
-    index: 0,
-    content_block: { type: "text", text: "" },
-  })}\n\n`;
-  const text = final.content ?? "";
-  for (const piece of chunkString(text)) {
-    yield `event: content_block_delta\ndata: ${JSON.stringify({
-      type: "content_block_delta",
+
+  if (final.toolCalls?.length) {
+    // 工具调用：逐个输出 tool_use 内容块
+    for (let i = 0; i < final.toolCalls.length; i++) {
+      const tc = final.toolCalls[i];
+      let inputObj: unknown = {};
+      try {
+        inputObj = JSON.parse(tc.function.arguments || "{}");
+      } catch {
+        inputObj = { _raw: tc.function.arguments };
+      }
+      const inputStr = JSON.stringify(inputObj);
+      yield `event: content_block_start\ndata: ${JSON.stringify({
+        type: "content_block_start",
+        index: i,
+        content_block: { type: "tool_use", id: tc.id, name: tc.function.name, input: {} },
+      })}\n\n`;
+      yield `event: content_block_delta\ndata: ${JSON.stringify({
+        type: "content_block_delta",
+        index: i,
+        delta: { type: "input_json_delta", partial_json: inputStr },
+      })}\n\n`;
+      yield `event: content_block_stop\ndata: ${JSON.stringify({
+        type: "content_block_stop",
+        index: i,
+      })}\n\n`;
+    }
+  } else {
+    yield `event: content_block_start\ndata: ${JSON.stringify({
+      type: "content_block_start",
       index: 0,
-      delta: { type: "text_delta", text: piece },
+      content_block: { type: "text", text: "" },
+    })}\n\n`;
+    const text = final.content ?? "";
+    for (const piece of chunkString(text)) {
+      yield `event: content_block_delta\ndata: ${JSON.stringify({
+        type: "content_block_delta",
+        index: 0,
+        delta: { type: "text_delta", text: piece },
+      })}\n\n`;
+    }
+    yield `event: content_block_stop\ndata: ${JSON.stringify({
+      type: "content_block_stop",
+      index: 0,
     })}\n\n`;
   }
-  yield `event: content_block_stop\ndata: ${JSON.stringify({
-    type: "content_block_stop",
-    index: 0,
-  })}\n\n`;
+
   yield `event: message_delta\ndata: ${JSON.stringify({
     type: "message_delta",
     delta: { stop_reason: final.toolCalls?.length ? "tool_use" : "end_turn", stop_sequence: null },
