@@ -49,7 +49,7 @@ export default function Mcp() {
   const openCreate = () => {
     setEditing(null);
     form.resetFields();
-    form.setFieldsValue({ transport: "stdio", enabled: true });
+    form.setFieldsValue({ transport: "stdio" });
     setOpen(true);
   };
   const openEdit = (s: McpServer) => {
@@ -58,7 +58,6 @@ export default function Mcp() {
     form.setFieldsValue({
       name: s.name,
       transport: s.transport,
-      enabled: !!s.enabled,
       command: (cfg.command as string) ?? "",
       args: Array.isArray(cfg.args) ? (cfg.args as string[]).join(" ") : "",
       env: cfg.env ? JSON.stringify(cfg.env, null, 2) : "",
@@ -81,8 +80,8 @@ export default function Mcp() {
       config = { url: v.url, headers: v.headers ? safeJson(v.headers) : {} };
     }
     try {
-      if (editing) await api.put(`/api/mcp/${editing.id}`, { name: v.name, transport: v.transport, config, enabled: v.enabled });
-      else await api.post("/api/mcp", { name: v.name, transport: v.transport, config, enabled: v.enabled });
+      if (editing) await api.put(`/api/mcp/${editing.id}`, { name: v.name, transport: v.transport, config });
+      else await api.post("/api/mcp", { name: v.name, transport: v.transport, config });
       message.success("已保存");
       setOpen(false);
       load();
@@ -122,6 +121,16 @@ export default function Mcp() {
       return JSON.parse(s);
     } catch {
       throw new Error("JSON 格式不正确");
+    }
+  };
+
+  const toggleEnabled = async (s: McpServer) => {
+    try {
+      await api.put(`/api/mcp/${s.id}`, { enabled: s.enabled ? 0 : 1 });
+      message.success(s.enabled ? `已停用 ${s.name}` : `已启用 ${s.name}`);
+      load();
+    } catch (e) {
+      message.error((e as Error).message);
     }
   };
 
@@ -175,7 +184,14 @@ export default function Mcp() {
           {
             title: "状态",
             dataIndex: "enabled",
-            render: (v: number) => <Tag color={v ? "green" : "default"}>{v ? "启用" : "停用"}</Tag>,
+            render: (v: number, r: McpServer) => (
+              <Switch
+                checked={!!v}
+                checkedChildren="启用"
+                unCheckedChildren="停用"
+                onChange={() => toggleEnabled(r)}
+              />
+            ),
           },
           {
             title: "操作",
@@ -250,10 +266,6 @@ export default function Mcp() {
               </Form.Item>
             </>
           )}
-
-          <Form.Item name="enabled" label="启用" valuePropName="checked">
-            <Switch />
-          </Form.Item>
         </Form>
       </Modal>
     </div>

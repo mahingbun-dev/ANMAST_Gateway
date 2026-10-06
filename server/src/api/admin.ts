@@ -414,7 +414,7 @@ export function registerAdminRoutes(app: FastifyInstance): void {
       instructions: String(b.instructions ?? ""),
       tools_config: asJsonString(b.tools_config, "{}"),
       triggers: b.triggers ? asJsonString(b.triggers, "{}") : null,
-      enabled: b.enabled === false ? 0 : 1,
+      enabled: b.enabled ? 1 : 0,
     });
     return reply.code(201).send(s);
   });
@@ -472,7 +472,7 @@ export function registerAdminRoutes(app: FastifyInstance): void {
       name: String(b.name),
       transport: String(b.transport),
       config: asJsonString(b.config, "{}"),
-      enabled: b.enabled === false ? 0 : 1,
+      enabled: b.enabled ? 1 : 0,
     });
     return reply.code(201).send(s);
   });

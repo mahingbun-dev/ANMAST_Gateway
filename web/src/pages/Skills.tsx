@@ -54,7 +54,6 @@ export default function Skills() {
   const openCreate = () => {
     setEditing(null);
     form.resetFields();
-    form.setFieldsValue({ enabled: true });
     setOpen(true);
   };
   const openEdit = (s: Skill) => {
@@ -63,7 +62,6 @@ export default function Skills() {
       name: s.name,
       description: s.description,
       instructions: s.instructions,
-      enabled: !!s.enabled,
       triggerKeywords: parseArr(s.triggers, "keywords").join(", "),
       tools: parseArr(s.tools_config, "tools").join(", "),
     });
@@ -81,7 +79,6 @@ export default function Skills() {
       name: v.name,
       description: v.description ?? "",
       instructions: v.instructions ?? "",
-      enabled: v.enabled,
       triggers: JSON.stringify({ keywords: split(v.triggerKeywords) }),
       tools_config: JSON.stringify({ tools: split(v.tools) }),
     };
@@ -130,6 +127,16 @@ export default function Skills() {
       message.error((e as Error).message);
     } finally {
       setImporting(false);
+    }
+  };
+
+  const toggleEnabled = async (s: Skill) => {
+    try {
+      await api.put(`/api/skills/${s.id}`, { enabled: s.enabled ? 0 : 1 });
+      message.success(s.enabled ? `已停用 ${s.name}` : `已启用 ${s.name}`);
+      load();
+    } catch (e) {
+      message.error((e as Error).message);
     }
   };
 
@@ -189,7 +196,14 @@ export default function Skills() {
           {
             title: "状态",
             dataIndex: "enabled",
-            render: (v: number) => <Tag color={v ? "green" : "default"}>{v ? "启用" : "停用"}</Tag>,
+            render: (v: number, r: Skill) => (
+              <Switch
+                checked={!!v}
+                checkedChildren="启用"
+                unCheckedChildren="停用"
+                onChange={() => toggleEnabled(r)}
+              />
+            ),
           },
           {
             title: "操作",
@@ -241,9 +255,6 @@ export default function Skills() {
               <Input placeholder="如 fetch_url" />
             </Form.Item>
           </Space>
-          <Form.Item name="enabled" label="启用" valuePropName="checked">
-            <Switch />
-          </Form.Item>
         </Form>
       </Modal>
 
