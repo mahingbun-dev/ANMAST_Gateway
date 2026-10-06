@@ -11,6 +11,7 @@ import {
   Tabs,
 } from "antd";
 import { ReloadOutlined } from "@ant-design/icons";
+import { Tooltip } from "antd";
 import { api } from "../api";
 import { useCurrency } from "../currency";
 import dayjs from "dayjs";
@@ -27,6 +28,8 @@ interface RequestRecord {
   prompt_tokens: number;
   completion_tokens: number;
   total_tokens: number;
+  cache_read_tokens: number;
+  cache_creation_tokens: number;
   cost: number;
   latency_ms: number;
   client_ip: string | null;
@@ -180,7 +183,26 @@ export default function Logs() {
           },
           {
             title: "Tokens",
-            render: (_: unknown, r: RequestRecord) => `${r.prompt_tokens}+${r.completion_tokens}`,
+            render: (_: unknown, r: RequestRecord) => {
+              const uncached = Math.max(
+                0,
+                r.prompt_tokens - r.cache_read_tokens - r.cache_creation_tokens,
+              );
+              return (
+                <Tooltip
+                  title={
+                    <div>
+                      <div>输入 · 未命中缓存：{uncached.toLocaleString()}</div>
+                      <div>输入 · 命中缓存：{r.cache_read_tokens.toLocaleString()}</div>
+                      <div>输入 · 缓存写入：{r.cache_creation_tokens.toLocaleString()}</div>
+                      <div>输出：{r.completion_tokens.toLocaleString()}</div>
+                    </div>
+                  }
+                >
+                  <span style={{ cursor: "help" }}>{(r.total_tokens ?? 0).toLocaleString()}</span>
+                </Tooltip>
+              );
+            },
           },
           {
             title: `成本 (${currency})`,

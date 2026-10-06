@@ -13,6 +13,7 @@ import {
   insertMessages,
   upsertConversation,
   bumpConversation,
+  getConversation,
 } from "../db/repos/logs.js";
 import type { ParsedRequest } from "./parse.js";
 import {
@@ -460,8 +461,8 @@ export async function processChat(input: ProcessInput): Promise<GatewayResult> {
       latency_ms: Date.now() - started,
       response_json: safeJson({ message: run.message, usage: run.usage }),
     });
-    logMessages(parsed.messages, run.toolMessages, run.message, requestId, conversationId, started);
-    bumpConversation(conversationId, parsed.messages.length + run.toolMessages.length + 1);
+    const loggedCount = logMessages(parsed.messages, run.toolMessages, run.message, requestId, conversationId, started);
+    bumpConversation(conversationId, loggedCount);
 
     const final: FinalAnswer = {
       content: run.message.content,
@@ -552,8 +553,8 @@ async function* streamPassthrough(ctx: PassthroughCtx): AsyncIterable<string | U
         response_json: safeJson({ content, usage }),
       });
       const assistant: ChatMessage = { role: "assistant", content: content || null };
-      logMessages(ctx.parsed.messages, [], assistant, ctx.requestId, ctx.conversationId, ctx.started);
-      bumpConversation(ctx.conversationId, ctx.parsed.messages.length + 1);
+      const loggedCount = logMessages(ctx.parsed.messages, [], assistant, ctx.requestId, ctx.conversationId, ctx.started);
+      bumpConversation(ctx.conversationId, loggedCount);
       return;
     } catch (e) {
       lastErr = e instanceof Error ? e : new Error(String(e));
@@ -582,7 +583,7 @@ function logMessages(
   requestId: string,
   conversationId: string,
   createdAt: number,
-): void {
+): number {
   const toLog = (m: ChatMessage) => ({
     request_id: requestId,
     conversation_id: conversationId,
@@ -593,10 +594,14 @@ function logMessages(
     tool_call_id: m.tool_call_id ?? null,
     created_at: createdAt,
   });
+  // 多轮 agent 循环的请求是「累积式」的：每次都携带完整历史。跳过已记录的前缀，避免同一会话重复记录。
+  const existing = getConversation(conversationId)?.message_count ?? 0;
+  const newInput = input.slice(Math.min(existing, input.length));
   const rows = [
-    ...input.map(toLog),
+    ...newInput.map(toLog),
     ...toolMessages.map(toLog),
     toLog(assistant),
   ];
   insertMessages(rows);
+  return rows.length;
 }

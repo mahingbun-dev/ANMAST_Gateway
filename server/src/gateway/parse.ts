@@ -29,6 +29,24 @@ function stripReserved(body: Record<string, unknown>): Record<string, unknown> {
   return out;
 }
 
+/** 从请求 metadata 中提取会话 id（Claude Code 把 session_id 藏在 metadata.user_id 的 JSON 字符串里） */
+function extractSessionId(body: Record<string, unknown>): string | undefined {
+  const metadata = body.metadata as Record<string, unknown> | undefined;
+  if (!metadata) return undefined;
+  const userId = metadata.user_id;
+  if (typeof userId === "string") {
+    try {
+      const obj = JSON.parse(userId) as { session_id?: string };
+      if (obj.session_id) return obj.session_id;
+    } catch {
+      /* ignore */
+    }
+  }
+  if (typeof metadata.session_id === "string") return metadata.session_id;
+  if (typeof metadata.conversation_id === "string") return metadata.conversation_id;
+  return undefined;
+}
+
 export interface ParsedRequest {
   protocol: "openai" | "anthropic";
   endpoint: string;
@@ -141,6 +159,7 @@ export function parseOpenAIRequest(body: Record<string, unknown>, endpoint: stri
       (body.conversation_id as string) ||
       (body.session_id as string) ||
       (gw.conversation_id as string) ||
+      extractSessionId(body) ||
       undefined,
     clientTools: normOpenAITools(body.tools),
     gatewayToolsRequested: !!body.gateway_tools || !!gw.enabled,
@@ -245,7 +264,7 @@ export function parseAnthropicRequest(
     complexity: (body.complexity as string) || (gw.complexity as string) || undefined,
     skills: Array.isArray(body.skills) ? (body.skills as string[]) : undefined,
     conversationId:
-      (body.conversation_id as string) || (body.session_id as string) || (gw.conversation_id as string) || undefined,
+      (body.conversation_id as string) || (body.session_id as string) || (gw.conversation_id as string) || extractSessionId(body) || undefined,
     clientTools: normAnthropicTools(body.tools),
     gatewayToolsRequested: !!body.gateway_tools || !!gw.enabled,
     stream: !!body.stream,
