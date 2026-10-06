@@ -58,7 +58,9 @@ async function main(): Promise<void> {
     await app.register(fastifyStatic, {
       root: webDist,
       prefix: "/",
-      wildcard: false,
+      // wildcard: true（默认）动态服务文件：每次重新构建前端后资源文件名会变，
+      // 若用 wildcard:false 则只在启动时扫描一次，新增资源会 404 导致白屏。
+      wildcard: true,
     });
     app.setNotFoundHandler((req, reply) => {
       if (req.method === "GET" && !req.url.startsWith("/v1") && !req.url.startsWith("/api")) {
