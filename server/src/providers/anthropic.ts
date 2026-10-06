@@ -115,14 +115,17 @@ export const anthropicAdapter: ProviderAdapter = {
       }
     }
     const u = data.usage ?? {};
+    const cacheRead = u.cache_read_input_tokens ?? 0;
+    const cacheCreation = u.cache_creation_input_tokens ?? 0;
     return {
       id: data.id,
       finishReason: data.stop_reason ?? "end_turn",
       usage: {
-        promptTokens: u.input_tokens ?? 0,
+        // promptTokens 统一为「总输入 token」= 未命中 + 命中缓存 + 缓存写入
+        promptTokens: (u.input_tokens ?? 0) + cacheRead + cacheCreation,
         completionTokens: u.output_tokens ?? 0,
-        cacheReadTokens: u.cache_read_input_tokens ?? 0,
-        cacheCreationTokens: u.cache_creation_input_tokens ?? 0,
+        cacheReadTokens: cacheRead,
+        cacheCreationTokens: cacheCreation,
       },
       message: {
         role: "assistant",
@@ -167,9 +170,10 @@ export const anthropicAdapter: ProviderAdapter = {
         const obj = JSON.parse(payload);
         if (currentEvent === "message_start") {
           const u = obj.message?.usage ?? {};
-          usage.promptTokens = u.input_tokens ?? 0;
           usage.cacheReadTokens = u.cache_read_input_tokens ?? 0;
           usage.cacheCreationTokens = u.cache_creation_input_tokens ?? 0;
+          usage.promptTokens =
+            (u.input_tokens ?? 0) + usage.cacheReadTokens + usage.cacheCreationTokens;
         } else if (currentEvent === "message_delta") {
           usage.completionTokens = obj.usage?.output_tokens ?? usage.completionTokens;
         } else if (currentEvent === "content_block_delta") {

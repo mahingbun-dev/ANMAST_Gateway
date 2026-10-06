@@ -145,6 +145,11 @@ export const migrations: string[] = [
   CREATE INDEX IF NOT EXISTS idx_messages_conv ON messages(conversation_id, id);
   CREATE INDEX IF NOT EXISTS idx_messages_request ON messages(request_id);
   `,
+  // v2 —— 缓存定价字段（输入区分命中缓存/未命中缓存）
+  `
+  ALTER TABLE models ADD COLUMN input_cache_read_price REAL NOT NULL DEFAULT 0;
+  ALTER TABLE models ADD COLUMN input_cache_write_price REAL NOT NULL DEFAULT 0;
+  `,
 ];
 
 export const DEFAULT_TIERS: { id: string; name: string; description: string; sort: number }[] = [

@@ -11,7 +11,16 @@ import { useCurrency } from "../currency";
 import dayjs from "dayjs";
 
 interface Stats {
-  totals: { requests: number; tokens: number; prompt_tokens: number; completion_tokens: number; cost: number; errors: number };
+  totals: {
+    requests: number;
+    tokens: number;
+    prompt_tokens: number;
+    cache_read_tokens: number;
+    cache_creation_tokens: number;
+    completion_tokens: number;
+    cost: number;
+    errors: number;
+  };
   daily: { day: string; requests: number; tokens: number; cost: number }[];
   byModel: { model_used: string; requests: number; tokens: number; cost: number }[];
   byKey: {
@@ -42,6 +51,8 @@ export default function Dashboard() {
 
   const daily = stats?.daily ?? [];
   const maxRequests = Math.max(1, ...daily.map((d) => d.requests));
+  const t = stats?.totals;
+  const uncachedInput = t ? Math.max(0, t.prompt_tokens - t.cache_read_tokens - t.cache_creation_tokens) : 0;
 
   return (
     <Space direction="vertical" size={16} style={{ width: "100%" }}>
@@ -77,6 +88,23 @@ export default function Dashboard() {
           </Card>
         </Col>
       </Row>
+
+      <Card title="Token 统计（区分缓存命中）" loading={loading}>
+        <Row gutter={16}>
+          <Col span={6}>
+            <Statistic title="输入 · 未命中缓存" value={uncachedInput} />
+          </Col>
+          <Col span={6}>
+            <Statistic title="输入 · 命中缓存" value={t?.cache_read_tokens ?? 0} valueStyle={{ color: "#389e0d" }} />
+          </Col>
+          <Col span={6}>
+            <Statistic title="输入 · 缓存写入" value={t?.cache_creation_tokens ?? 0} valueStyle={{ color: "#d46b08" }} />
+          </Col>
+          <Col span={6}>
+            <Statistic title="输出" value={t?.completion_tokens ?? 0} />
+          </Col>
+        </Row>
+      </Card>
 
       <Card title="近 30 天调用趋势" loading={loading}>
         {daily.length === 0 ? (

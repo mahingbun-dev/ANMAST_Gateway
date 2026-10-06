@@ -261,6 +261,8 @@ export function statsTotals(): {
   requests: number;
   tokens: number;
   prompt_tokens: number;
+  cache_read_tokens: number;
+  cache_creation_tokens: number;
   completion_tokens: number;
   cost: number;
   errors: number;
@@ -270,6 +272,8 @@ export function statsTotals(): {
       `SELECT COUNT(*) AS requests,
               COALESCE(SUM(total_tokens),0) AS tokens,
               COALESCE(SUM(prompt_tokens),0) AS prompt_tokens,
+              COALESCE(SUM(cache_read_tokens),0) AS cache_read_tokens,
+              COALESCE(SUM(cache_creation_tokens),0) AS cache_creation_tokens,
               COALESCE(SUM(completion_tokens),0) AS completion_tokens,
               COALESCE(SUM(cost),0) AS cost,
               SUM(CASE WHEN status='error' THEN 1 ELSE 0 END) AS errors
@@ -279,6 +283,8 @@ export function statsTotals(): {
     requests: number;
     tokens: number;
     prompt_tokens: number;
+    cache_read_tokens: number;
+    cache_creation_tokens: number;
     completion_tokens: number;
     cost: number;
     errors: number;

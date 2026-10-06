@@ -36,6 +36,8 @@ interface Model {
   capabilities: string;
   context_window: number;
   input_price: number;
+  input_cache_read_price?: number;
+  input_cache_write_price?: number;
   output_price: number;
   priority: number;
   is_router: number;
@@ -132,6 +134,8 @@ export default function Models() {
       tiers: ["medium"],
       context_window: 128000,
       input_price: 0,
+      input_cache_read_price: 0,
+      input_cache_write_price: 0,
       output_price: 0,
       priority: 100,
       is_router: false,
@@ -157,6 +161,8 @@ export default function Models() {
       tools: cap.tools !== false,
       vision: !!cap.vision,
       input_price: toDisplay(m.input_price),
+      input_cache_read_price: toDisplay(m.input_cache_read_price ?? 0),
+      input_cache_write_price: toDisplay(m.input_cache_write_price ?? 0),
       output_price: toDisplay(m.output_price),
     });
     fetchModels(m.provider_id);
@@ -168,6 +174,8 @@ export default function Models() {
     const body = {
       ...values,
       input_price: fromDisplay(Number(values.input_price ?? 0)),
+      input_cache_read_price: fromDisplay(Number(values.input_cache_read_price ?? 0)),
+      input_cache_write_price: fromDisplay(Number(values.input_cache_write_price ?? 0)),
       output_price: fromDisplay(Number(values.output_price ?? 0)),
       capabilities: JSON.stringify({ tools: !!values.tools, vision: !!values.vision }),
     };
@@ -231,11 +239,14 @@ export default function Models() {
             render: (v: number) => v.toLocaleString(),
           },
           {
-            title: `价格 (每1M tokens, ${currency})`,
+            title: `价格 (每1M, ${currency})`,
             render: (_: unknown, r: Model) => (
-              <span>
-                {formatPrice(r.input_price)} / {formatPrice(r.output_price)}
-              </span>
+              <Space direction="vertical" size={0} style={{ fontSize: 12 }}>
+                <span>未命中 {formatPrice(r.input_price)}</span>
+                <span>命中缓存 {formatPrice(r.input_cache_read_price ?? 0)}</span>
+                <span>缓存写入 {formatPrice(r.input_cache_write_price ?? 0)}</span>
+                <span>输出 {formatPrice(r.output_price)}</span>
+              </Space>
             ),
           },
           {
@@ -320,11 +331,20 @@ export default function Models() {
               <InputNumber style={{ width: "100%" }} />
             </Form.Item>
           </Space>
-          <Space size={16} style={{ display: "flex" }}>
-            <Form.Item name="input_price" label={`输入价格 (${currency}/1M)`} style={{ flex: 1 }}>
+          <Typography.Text strong>价格（每 1M tokens，{currency}）</Typography.Text>
+          <Space size={16} style={{ display: "flex", marginTop: 8 }}>
+            <Form.Item name="input_price" label="输入 · 未命中缓存" style={{ flex: 1 }}>
               <InputNumber min={0} step={0.01} style={{ width: "100%" }} />
             </Form.Item>
-            <Form.Item name="output_price" label={`输出价格 (${currency}/1M)`} style={{ flex: 1 }}>
+            <Form.Item name="input_cache_read_price" label="输入 · 命中缓存" style={{ flex: 1 }}>
+              <InputNumber min={0} step={0.01} style={{ width: "100%" }} />
+            </Form.Item>
+          </Space>
+          <Space size={16} style={{ display: "flex" }}>
+            <Form.Item name="input_cache_write_price" label="输入 · 缓存写入" style={{ flex: 1 }}>
+              <InputNumber min={0} step={0.01} style={{ width: "100%" }} />
+            </Form.Item>
+            <Form.Item name="output_price" label="输出" style={{ flex: 1 }}>
               <InputNumber min={0} step={0.01} style={{ width: "100%" }} />
             </Form.Item>
           </Space>

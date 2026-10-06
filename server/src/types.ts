@@ -23,6 +23,8 @@ export interface ModelConfig {
   capabilities: string; // JSON
   context_window: number;
   input_price: number;
+  input_cache_read_price: number;
+  input_cache_write_price: number;
   output_price: number;
   priority: number;
   is_router: number;

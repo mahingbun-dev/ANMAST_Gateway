@@ -280,6 +280,8 @@ export function registerAdminRoutes(app: FastifyInstance): void {
       capabilities: asJsonString(b.capabilities, '{"tools":true,"vision":false}'),
       context_window: Number(b.context_window ?? 128000),
       input_price: Number(b.input_price ?? 0),
+      input_cache_read_price: Number(b.input_cache_read_price ?? 0),
+      input_cache_write_price: Number(b.input_cache_write_price ?? 0),
       output_price: Number(b.output_price ?? 0),
       priority: Number(b.priority ?? 100),
       is_router: b.is_router ? 1 : 0,
@@ -294,7 +296,14 @@ export function registerAdminRoutes(app: FastifyInstance): void {
     const patch: Record<string, unknown> = {};
     const strFields = ["provider_id", "name", "display_name"] as const;
     for (const f of strFields) if (b[f] !== undefined) patch[f] = String(b[f]);
-    const numFields = ["context_window", "input_price", "output_price", "priority"] as const;
+    const numFields = [
+      "context_window",
+      "input_price",
+      "input_cache_read_price",
+      "input_cache_write_price",
+      "output_price",
+      "priority",
+    ] as const;
     for (const f of numFields) if (b[f] !== undefined) patch[f] = Number(b[f]);
     if (b.tiers !== undefined) patch.tiers = asJsonString(b.tiers, '["medium"]');
     if (b.capabilities !== undefined) patch.capabilities = asJsonString(b.capabilities, "{}");

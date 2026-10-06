@@ -134,6 +134,17 @@ curl http://<mac-mini-ip>:4000/v1/messages \
 5. 目标层级无可用模型 → 自动降级/提升到其它层级。
 6. 调用失败（网络/限流/5xx）→ 自动切换到下一个候选模型（无缝切换）。
 
+## 价格与成本（含缓存）
+
+模型价格区分四档（每 1M tokens，默认 CNY，可在「设置」切换 CNY/USD 自动换算）：
+
+- **输入 · 未命中缓存**（`input_price`）
+- **输入 · 命中缓存**（`input_cache_read_price`）
+- **输入 · 缓存写入**（`input_cache_write_price`，Anthropic 等支持）
+- **输出**（`output_price`）
+
+成本 = 未命中输入 × input_price + 命中缓存 × cache_read_price + 缓存写入 × cache_write_price + 输出 × output_price。网关会从上游 usage 中提取命中缓存（OpenAI 的 `prompt_tokens_details.cached_tokens`、Anthropic 的 `cache_read_input_tokens` / `cache_creation_input_tokens`），仪表盘的「Token 统计」区分显示未命中/命中/写入/输出。
+
 ## Skill 与 MCP
 
 - **MCP Server** 支持三种传输：`stdio`（本地进程）、`sse`、`streamable-http`。网关连接后把工具注入请求；模型发起工具调用时由网关内执行并回填结果（默认 `on_demand`，可在路由设置改为 `auto` 或 `off`）。

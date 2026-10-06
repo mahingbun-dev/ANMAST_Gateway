@@ -85,6 +85,8 @@ export interface ModelInput {
   capabilities: string;
   context_window: number;
   input_price: number;
+  input_cache_read_price: number;
+  input_cache_write_price: number;
   output_price: number;
   priority: number;
   is_router: number;
@@ -96,8 +98,8 @@ export function createModel(input: ModelInput): ModelConfig {
   const now = Date.now();
   getDb()
     .prepare(
-      `INSERT INTO models (id, provider_id, name, display_name, tiers, capabilities, context_window, input_price, output_price, priority, is_router, enabled, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO models (id, provider_id, name, display_name, tiers, capabilities, context_window, input_price, input_cache_read_price, input_cache_write_price, output_price, priority, is_router, enabled, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       id,
@@ -108,6 +110,8 @@ export function createModel(input: ModelInput): ModelConfig {
       input.capabilities,
       input.context_window,
       input.input_price,
+      input.input_cache_read_price,
+      input.input_cache_write_price,
       input.output_price,
       input.priority,
       input.is_router,
@@ -124,7 +128,7 @@ export function updateModel(id: string, patch: Partial<ModelInput>): ModelConfig
   const next = { ...existing, ...patch, updated_at: Date.now() };
   getDb()
     .prepare(
-      `UPDATE models SET provider_id=?, name=?, display_name=?, tiers=?, capabilities=?, context_window=?, input_price=?, output_price=?, priority=?, is_router=?, enabled=?, updated_at=? WHERE id=?`,
+      `UPDATE models SET provider_id=?, name=?, display_name=?, tiers=?, capabilities=?, context_window=?, input_price=?, input_cache_read_price=?, input_cache_write_price=?, output_price=?, priority=?, is_router=?, enabled=?, updated_at=? WHERE id=?`,
     )
     .run(
       next.provider_id,
@@ -134,6 +138,8 @@ export function updateModel(id: string, patch: Partial<ModelInput>): ModelConfig
       next.capabilities,
       next.context_window,
       next.input_price,
+      next.input_cache_read_price,
+      next.input_cache_write_price,
       next.output_price,
       next.priority,
       next.is_router,

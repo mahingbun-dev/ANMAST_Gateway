@@ -52,8 +52,17 @@ interface RunResult {
 
 function calcCost(model: ModelConfig, usage: Usage): number {
   const inPrice = model.input_price ?? 0;
+  const cacheReadPrice = model.input_cache_read_price ?? 0;
+  const cacheWritePrice = model.input_cache_write_price ?? 0;
   const outPrice = model.output_price ?? 0;
-  return (usage.promptTokens / 1_000_000) * inPrice + (usage.completionTokens / 1_000_000) * outPrice;
+  // 未命中缓存的输入 = 总输入 - 命中缓存 - 缓存写入
+  const uncached = Math.max(0, usage.promptTokens - usage.cacheReadTokens - usage.cacheCreationTokens);
+  return (
+    (uncached / 1_000_000) * inPrice +
+    (usage.cacheReadTokens / 1_000_000) * cacheReadPrice +
+    (usage.cacheCreationTokens / 1_000_000) * cacheWritePrice +
+    (usage.completionTokens / 1_000_000) * outPrice
+  );
 }
 
 function sumUsage(usages: Usage[]): Usage {
