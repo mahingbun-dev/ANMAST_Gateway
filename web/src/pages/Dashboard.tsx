@@ -1,0 +1,183 @@
+import { useEffect, useState } from "react";
+import { Card, Col, Row, Statistic, Table, Typography, Space, Tag, Empty } from "antd";
+import {
+  FileTextOutlined,
+  ThunderboltOutlined,
+  DollarOutlined,
+  WarningOutlined,
+} from "@ant-design/icons";
+import { api } from "../api";
+import { useCurrency } from "../currency";
+import dayjs from "dayjs";
+
+interface Stats {
+  totals: { requests: number; tokens: number; prompt_tokens: number; completion_tokens: number; cost: number; errors: number };
+  daily: { day: string; requests: number; tokens: number; cost: number }[];
+  byModel: { model_used: string; requests: number; tokens: number; cost: number }[];
+  byKey: {
+    api_key_id: string | null;
+    name: string;
+    key_prefix: string;
+    requests: number;
+    tokens: number;
+    cost: number;
+    errors: number;
+    month_tokens: number;
+    month_cost: number;
+    last_used_at: number | null;
+  }[];
+}
+
+export default function Dashboard() {
+  const [stats, setStats] = useState<Stats | null>(null);
+  const [loading, setLoading] = useState(true);
+  const { currency, symbol, toDisplay, formatCost } = useCurrency();
+
+  useEffect(() => {
+    api
+      .get<Stats>("/api/stats")
+      .then(setStats)
+      .finally(() => setLoading(false));
+  }, []);
+
+  const daily = stats?.daily ?? [];
+  const maxRequests = Math.max(1, ...daily.map((d) => d.requests));
+
+  return (
+    <Space direction="vertical" size={16} style={{ width: "100%" }}>
+      <Row gutter={16}>
+        <Col span={6}>
+          <Card loading={loading}>
+            <Statistic title="总调用次数" value={stats?.totals.requests ?? 0} prefix={<FileTextOutlined />} />
+          </Card>
+        </Col>
+        <Col span={6}>
+          <Card loading={loading}>
+            <Statistic title="总 Token" value={stats?.totals.tokens ?? 0} prefix={<ThunderboltOutlined />} />
+          </Card>
+        </Col>
+        <Col span={6}>
+          <Card loading={loading}>
+            <Statistic
+              title={`估算成本 (${currency})`}
+              value={toDisplay(stats?.totals.cost ?? 0)}
+              precision={6}
+              prefix={symbol}
+            />
+          </Card>
+        </Col>
+        <Col span={6}>
+          <Card loading={loading}>
+            <Statistic
+              title="错误次数"
+              value={stats?.totals.errors ?? 0}
+              prefix={<WarningOutlined />}
+              valueStyle={{ color: (stats?.totals.errors ?? 0) > 0 ? "#cf1322" : undefined }}
+            />
+          </Card>
+        </Col>
+      </Row>
+
+      <Card title="近 30 天调用趋势" loading={loading}>
+        {daily.length === 0 ? (
+          <Empty description="暂无数据" />
+        ) : (
+          <div style={{ display: "flex", alignItems: "flex-end", gap: 4, height: 160 }}>
+            {daily.map((d) => (
+              <div
+                key={d.day}
+                title={`${d.day}: ${d.requests} 次`}
+                style={{
+                  flex: 1,
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "flex-end",
+                  height: "100%",
+                }}
+              >
+                <div
+                  style={{
+                    width: "70%",
+                    height: `${Math.max(4, (d.requests / maxRequests) * 140)}px`,
+                    background: "#2563eb",
+                    borderRadius: 3,
+                  }}
+                />
+              </div>
+            ))}
+          </div>
+        )}
+        <Typography.Text type="secondary" style={{ display: "block", marginTop: 8 }}>
+          {daily.length > 0 && `${daily[0].day} ~ ${daily[daily.length - 1].day}`}
+        </Typography.Text>
+      </Card>
+
+      <Card title="模型用量排行" loading={loading}>
+        <Table
+          rowKey="model_used"
+          pagination={false}
+          dataSource={stats?.byModel ?? []}
+          columns={[
+            { title: "模型", dataIndex: "model_used" },
+            { title: "调用次数", dataIndex: "requests" },
+            { title: "Token", dataIndex: "tokens" },
+            {
+              title: `成本 (${currency})`,
+              dataIndex: "cost",
+              render: (v: number) => <Tag color="green">{formatCost(v)}</Tag>,
+            },
+          ]}
+          locale={{ emptyText: "暂无数据" }}
+        />
+      </Card>
+
+      <Card title="按密钥成本账单" loading={loading}>
+        <Table
+          rowKey="api_key_id"
+          pagination={false}
+          dataSource={stats?.byKey ?? []}
+          columns={[
+            {
+              title: "密钥",
+              render: (_: unknown, r: Stats["byKey"][number]) => (
+                <Space direction="vertical" size={0}>
+                  <Typography.Text>{r.name}</Typography.Text>
+                  {r.key_prefix && (
+                    <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                      {r.key_prefix}…
+                    </Typography.Text>
+                  )}
+                </Space>
+              ),
+            },
+            { title: "调用次数", dataIndex: "requests" },
+            { title: "总 Token", dataIndex: "tokens", render: (v: number) => v.toLocaleString() },
+            {
+              title: `总成本 (${currency})`,
+              dataIndex: "cost",
+              render: (v: number) => <Tag color="green">{formatCost(v)}</Tag>,
+            },
+            {
+              title: "本月 Token",
+              dataIndex: "month_tokens",
+              render: (v: number) => v.toLocaleString(),
+            },
+            {
+              title: `本月成本 (${currency})`,
+              dataIndex: "month_cost",
+              render: (v: number) => formatCost(v),
+            },
+            { title: "错误", dataIndex: "errors" },
+            {
+              title: "最近使用",
+              dataIndex: "last_used_at",
+              render: (v: number | null) => (v ? dayjs(v).format("MM-DD HH:mm") : "—"),
+            },
+          ]}
+          locale={{ emptyText: "暂无数据" }}
+        />
+      </Card>
+    </Space>
+  );
+}

@@ -1,0 +1,19 @@
+{
+  "name": "anmast-gateway",
+  "version": "0.1.0",
+  "private": true,
+  "description": "ANMAST AI Gateway - 多供应商 AI 网关，支持复杂度路由、调用记录、Skill 与 MCP",
+  "license": "MIT",
+  "scripts": {
+    "dev": "pnpm --parallel --filter \"./server\" --filter \"./web\" dev",
+    "dev:server": "pnpm --filter \"./server\" dev",
+    "dev:web": "pnpm --filter \"./web\" dev",
+    "build": "pnpm --filter \"./server\" build && pnpm --filter \"./web\" build",
+    "start": "pnpm --filter \"./server\" start",
+    "typecheck": "pnpm -r typecheck"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "packageManager": "pnpm@9.15.0"
+}
