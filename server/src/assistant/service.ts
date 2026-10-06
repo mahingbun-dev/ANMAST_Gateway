@@ -7,6 +7,7 @@ import { listProviders, listModels, listTiers } from "../db/repos/models.js";
 import { listSkills, listMcpServers } from "../db/repos/ext.js";
 import { listApiKeys } from "../db/repos/auth.js";
 import { combineBuiltinSkills } from "./skills.js";
+import { ASSISTANT_TOOLS, executeAssistantTool } from "./tools.js";
 
 export interface AssistantResult {
   message: ChatMessage;
@@ -96,9 +97,9 @@ function resolveAssistantModel(): ModelWithProvider | undefined {
 }
 
 /**
- * 处理网页内 AI 助手的对话。
- * 沙箱约束：仅使用内置配置 Skill + 配置快照作为系统提示，不注入任何用户 Skill、不注入 MCP 工具、
- * 不做复杂度路由，也不具备任何写操作能力（纯只读指导）。
+ * 处理网页内 AI 助手的对话（含受限的安装工具循环）。
+ * 沙箱约束：仅使用内置配置 Skill + 配置快照作为系统提示；工具仅限白名单内的安装工具
+ * （search_catalog / install_skill / install_mcp），不注入用户 Skill、不注入 MCP 工具、不做复杂度路由。
  */
 export async function handleAssistantChat(
   messages: ChatMessage[],
@@ -111,17 +112,57 @@ export async function handleAssistantChat(
   }
   const systemPrompt = `${combineBuiltinSkills()}\n\n${buildConfigSnapshot()}`;
   const adapter = getAdapter(cand.provider);
-  const res = await adapter.chat({
-    model: cand.model.name,
-    messages: [{ role: "system", content: systemPrompt }, ...messages],
-    stream: false,
-    temperature: 0.3,
-    extra: { __provider: cand.provider },
-  });
+  const maxSteps = 8;
+  const working: ChatMessage[] = [...messages];
+  let lastId: string | undefined;
+  let lastUsage: Usage = {
+    promptTokens: 0,
+    completionTokens: 0,
+    cacheReadTokens: 0,
+    cacheCreationTokens: 0,
+  };
+  let lastMessage: ChatMessage = { role: "assistant", content: null };
+
+  for (let step = 0; step < maxSteps; step++) {
+    const res = await adapter.chat({
+      model: cand.model.name,
+      messages: [{ role: "system", content: systemPrompt }, ...working],
+      stream: false,
+      temperature: 0.3,
+      tools: ASSISTANT_TOOLS,
+      extra: { __provider: cand.provider },
+    });
+    lastId = res.id;
+    lastUsage = res.usage;
+    lastMessage = res.message;
+
+    const calls = res.message.tool_calls ?? [];
+    if (!calls.length) {
+      return { message: res.message, usage: res.usage, modelName: cand.model.name, id: res.id };
+    }
+
+    working.push({ role: "assistant", content: res.message.content, tool_calls: calls });
+    for (const tc of calls) {
+      let args: Record<string, unknown> = {};
+      try {
+        args = JSON.parse(tc.function.arguments || "{}");
+      } catch {
+        /* ignore */
+      }
+      let content: string;
+      try {
+        content = await executeAssistantTool(tc.function.name, args);
+      } catch (e) {
+        content = `执行失败：${(e as Error).message}`;
+      }
+      working.push({ role: "tool", content, tool_call_id: tc.id });
+    }
+  }
+
   return {
-    message: res.message,
-    usage: res.usage,
+    message: lastMessage,
+    usage: lastUsage,
     modelName: cand.model.name,
-    id: res.id,
+    id: lastId,
   };
 }

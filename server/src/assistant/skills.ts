@@ -73,6 +73,25 @@ client.chat.completions.create(model="auto", messages=[{"role":"user","content":
 - MCP 工具不可用：检查 MCP Server 是否启用、注入模式是否为 off、工具名是否拼写一致。
 - 流式响应不是预期格式：通常与客户端 SDK 版本有关，建议用官方 SDK 并指向网关 Base URL。`,
   },
+  {
+    name: "install-assist",
+    content: `# 安装 Skill 与 MCP（你有工具）
+你可以实际帮管理员安装 Skill 与 MCP Server，使用以下三个工具：
+
+1. search_catalog(query)：在内置目录中搜索可安装的 MCP / Skill。
+2. install_skill(source)：安装 Skill。source 可为「名称」（查目录）或「URL」（GitHub 仓库 / SKILL.md 原始链接）。会下载并导入到网关。
+3. install_mcp(name, {transport, command, args, env, url, headers})：安装 MCP Server。可只传 name（查目录自动套用安装命令），或显式给：
+   - stdio：transport="stdio" + command + args（如 npx/uvx/python）
+   - 远程：transport="sse" 或 "streamable-http" + url
+
+规则：
+- 用户说「安装 xxx」时，先 search_catalog 查找；命中就直接安装；未命中则向用户要 URL 或完整的 command/args。
+- 目录里的 stdio 参数若含 /path/to/... 占位符，安装后提醒用户去「MCP 服务器」页改成真实路径，或先问清楚路径再安装。
+- 需要 API Key 的 MCP（如 github、brave-search），安装后提醒用户到「MCP 服务器」页配置环境变量。
+- 安装完成后简明汇报结果，不要展开无关内容。
+
+你只能使用这三个安装工具，不具备任何其它写操作或执行任意命令的能力。`,
+  },
 ];
 
 export function combineBuiltinSkills(): string {

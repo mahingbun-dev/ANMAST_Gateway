@@ -115,7 +115,7 @@ export default function Assistant() {
           <Space>
             <RobotOutlined />
             <span>配置助手</span>
-            <Tag color="blue">仅协助配置</Tag>
+            <Tag color="blue">配置/安装</Tag>
           </Space>
         }
         placement="right"
