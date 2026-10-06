@@ -137,7 +137,7 @@ export default function ApiKeys() {
       </Space>
 
       <Typography.Paragraph type="secondary">
-        远程电脑通过网关调用模型时使用这些密钥认证；可为每个密钥单独绑定要启用的 Skill 与 MCP Server。
+        远程电脑通过网关调用模型时使用这些密钥认证；可为每个密钥配置 Skill 允许列表与 MCP 允许列表（留空表示全部可用）。
       </Typography.Paragraph>
 
       <Table
@@ -152,11 +152,11 @@ export default function ApiKeys() {
             render: (v: string) => <Typography.Text code>{v}…</Typography.Text>,
           },
           {
-            title: "绑定 Skill",
+            title: "Skill 允许列表",
             dataIndex: "skill_ids",
             render: (v: string) => {
               const ids = parseArr(v);
-              if (!ids.length) return "—";
+              if (!ids.length) return <Typography.Text type="secondary">全部</Typography.Text>;
               return ids.map((id) => (
                 <Tag key={id} color="blue">
                   {skills.find((s) => s.id === id)?.name ?? id}
@@ -165,11 +165,11 @@ export default function ApiKeys() {
             },
           },
           {
-            title: "绑定 MCP",
+            title: "MCP 允许列表",
             dataIndex: "mcp_server_ids",
             render: (v: string) => {
               const ids = parseArr(v);
-              if (!ids.length) return "—";
+              if (!ids.length) return <Typography.Text type="secondary">全部</Typography.Text>;
               return ids.map((id) => (
                 <Tag key={id} color="purple">
                   {mcps.find((m) => m.id === id)?.name ?? id}
@@ -254,19 +254,19 @@ export default function ApiKeys() {
             <Form.Item name="monthly_limit_tokens" label="当月 token 额度（留空为不限）">
               <InputNumber style={{ width: "100%" }} min={0} placeholder="如 100000000" />
             </Form.Item>
-            <Form.Item name="skill_ids" label="绑定 Skill（该密钥调用时自动激活）">
+            <Form.Item name="skill_ids" label="Skill 允许列表（留空则全部可用）">
               <Select
                 mode="multiple"
                 allowClear
-                placeholder="选择要启用的 Skill"
+                placeholder="选择该密钥可用的 Skill"
                 options={skills.map((s) => ({ value: s.id, label: s.name }))}
               />
             </Form.Item>
-            <Form.Item name="mcp_server_ids" label="绑定 MCP Server（注入其工具）">
+            <Form.Item name="mcp_server_ids" label="MCP 允许列表（留空则全部可用）">
               <Select
                 mode="multiple"
                 allowClear
-                placeholder="选择要注入的 MCP Server 工具"
+                placeholder="选择该密钥可用的 MCP Server"
                 options={mcps.map((m) => ({ value: m.id, label: m.name }))}
               />
             </Form.Item>

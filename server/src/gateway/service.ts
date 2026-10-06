@@ -1,4 +1,4 @@
-import type { Provider, ModelConfig, ChatMessage, ToolDefinition, ToolCall } from "../types.js";
+import type { Provider, ModelConfig, ChatMessage, ToolDefinition, ToolCall, Skill } from "../types.js";
 import type { Usage, NormalizedRequest } from "../providers/types.js";
 import { getAdapter } from "../providers/index.js";
 import { resolveModel, autoDetectComplexity, type ModelWithProvider } from "../routing/index.js";
@@ -293,31 +293,39 @@ export async function processChat(input: ProcessInput): Promise<GatewayResult> {
   if (viaAuto) target = { ...target, tierSource: "auto", viaAutoDetect: true };
   if (explicitTier) target.usedComplexity = explicitTier;
 
-  // 2. Skill 与工具（含按 API Key 配置的 Skill / MCP）
+  // 2. Skill 与工具（含按 API Key 配置的 Skill / MCP 允许列表）
   const keyCfg = apiKeyId ? getApiKey(apiKeyId) : undefined;
   const keySkillIds = keyCfg ? parseStringArray(keyCfg.skill_ids) : [];
   const keyMcpIds = keyCfg ? parseStringArray(keyCfg.mcp_server_ids) : [];
 
-  const activeSkills = resolveActiveSkills(parsed.skills, parsed.messages);
-  // 追加该 API Key 绑定的 Skill（自动激活，去重）
-  if (keySkillIds.length) {
-    const bound = listSkills().filter((s) => s.enabled && keySkillIds.includes(s.id));
-    const seen = new Set(activeSkills.map((s) => s.id));
-    for (const s of bound) if (!seen.has(s.id)) activeSkills.push(s);
+  let activeSkills: Skill[];
+  if (keySkillIds.length === 0) {
+    // 无允许列表 → 全部 Skill 可用（显式请求 + 关键词触发）
+    activeSkills = resolveActiveSkills(parsed.skills, parsed.messages);
+  } else {
+    // 允许列表模式：仅列表内的 Skill 可用；列表内已启用的 Skill 自动激活
+    const allowSet = new Set(keySkillIds);
+    const candidates = resolveActiveSkills(parsed.skills, parsed.messages).filter((s) =>
+      allowSet.has(s.id),
+    );
+    const bound = listSkills().filter((s) => s.enabled && allowSet.has(s.id));
+    const map = new Map<string, Skill>();
+    for (const s of [...bound, ...candidates]) map.set(s.id, s);
+    activeSkills = [...map.values()];
   }
   const skillPrompt = buildSkillSystemPrompt(activeSkills);
   const skillToolNames = getSkillToolNames(activeSkills);
 
   let gatewayTools: ToolDefinition[] = [];
   if (keyMcpIds.length) {
-    // 按 API Key 指定：仅注入这些 MCP Server 的工具（覆盖全局模式）
+    // MCP 允许列表：仅注入列表内这些 MCP Server 的工具
     try {
       const tools = await listToolsFromServers(keyMcpIds);
       gatewayTools = skillToolNames.length
         ? tools.filter((t) => skillToolNames.includes(t.function.name))
         : tools;
     } catch (e) {
-      logger.warn("获取 API Key 绑定的 MCP 工具失败", e);
+      logger.warn("获取 API Key 允许列表内的 MCP 工具失败", e);
     }
   } else {
     const mcpMode = getSetting<string>("mcp_tools_mode", "on_demand");
