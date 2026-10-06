@@ -50,7 +50,7 @@ import {
 import { generateApiKey, hashPassword } from "../lib/crypto.js";
 import { listServerTools, refreshServer } from "../mcp/manager.js";
 import { listProviderModels, fetchModelContext } from "../providers/discovery.js";
-import { handleAssistantChat } from "../assistant/service.js";
+import { handleAssistantChat, assistantChatStream } from "../assistant/service.js";
 import { importSkillFromContent, importSkillFromPath } from "../skills/importer.js";
 import { openaiJson, fakeOpenAIStream, genId } from "../gateway/respond.js";
 import { toReadable } from "../lib/stream.js";
@@ -136,6 +136,12 @@ export function registerAdminRoutes(app: FastifyInstance): void {
       return reply.code(400).send({ error: "缺少 messages 字段" });
     }
     try {
+      if (b.stream) {
+        reply.header("Content-Type", "text/event-stream");
+        reply.header("Cache-Control", "no-cache");
+        reply.header("Connection", "keep-alive");
+        return reply.send(toReadable(assistantChatStream(b.messages)));
+      }
       const res = await handleAssistantChat(b.messages);
       const final = {
         content: res.message.content,
@@ -148,12 +154,6 @@ export function registerAdminRoutes(app: FastifyInstance): void {
         created: Math.floor(Date.now() / 1000),
         protocol: "openai" as const,
       };
-      if (b.stream) {
-        reply.header("Content-Type", "text/event-stream");
-        reply.header("Cache-Control", "no-cache");
-        reply.header("Connection", "keep-alive");
-        return reply.send(toReadable(fakeOpenAIStream(final, meta)));
-      }
       return reply.send(openaiJson(final, meta));
     } catch (e) {
       return reply.code(502).send({ error: (e as Error).message });

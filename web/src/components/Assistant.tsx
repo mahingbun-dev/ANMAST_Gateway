@@ -1,6 +1,12 @@
 import { useState, useRef, useEffect } from "react";
 import { Drawer, Button, Input, Space, Typography, Empty, Tag } from "antd";
-import { CommentOutlined, SendOutlined, RobotOutlined, UserOutlined } from "@ant-design/icons";
+import {
+  CommentOutlined,
+  SendOutlined,
+  RobotOutlined,
+  UserOutlined,
+  LoadingOutlined,
+} from "@ant-design/icons";
 import { getToken } from "../api";
 
 interface Msg {
@@ -13,11 +19,27 @@ export default function Assistant() {
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [status, setStatus] = useState("");
+  const [elapsed, setElapsed] = useState(0);
   const listRef = useRef<HTMLDivElement>(null);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const startTimer = () => {
+    setElapsed(0);
+    stopTimer();
+    timerRef.current = setInterval(() => setElapsed((e) => e + 1), 1000);
+  };
+  const stopTimer = () => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+  };
+  useEffect(() => () => stopTimer(), []);
 
   useEffect(() => {
     if (listRef.current) listRef.current.scrollTop = listRef.current.scrollHeight;
-  }, [messages, open]);
+  }, [messages, open, status]);
 
   const send = async () => {
     const text = input.trim();
@@ -26,6 +48,8 @@ export default function Assistant() {
     setMessages([...history, { role: "assistant", content: "" }]);
     setInput("");
     setLoading(true);
+    setStatus("正在思考…");
+    startTimer();
 
     try {
       const token = getToken();
@@ -47,6 +71,7 @@ export default function Assistant() {
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let acc = "";
+      let errorMsg = "";
       let buf = "";
       for (;;) {
         const { done, value } = await reader.read();
@@ -56,25 +81,38 @@ export default function Assistant() {
         while ((idx = buf.indexOf("\n")) >= 0) {
           const line = buf.slice(0, idx).trim();
           buf = buf.slice(idx + 1);
-          if (line.startsWith("data:")) {
-            const payload = line.slice(5).trim();
-            if (!payload || payload === "[DONE]") continue;
-            try {
-              const o = JSON.parse(payload);
-              const d = o.choices?.[0]?.delta?.content;
-              if (d) acc += d;
-            } catch {
-              /* ignore */
+          if (!line.startsWith("data:")) continue;
+          const payload = line.slice(5).trim();
+          if (!payload || payload === "[DONE]") continue;
+          try {
+            const o = JSON.parse(payload);
+            if (o.type === "progress") {
+              setStatus(o.message ?? "处理中…");
+              continue;
             }
+            if (o.type === "error") {
+              errorMsg = o.message ?? "未知错误";
+              continue;
+            }
+            const d = o.choices?.[0]?.delta?.content;
+            if (d) {
+              acc += d;
+              setStatus("");
+            }
+          } catch {
+            /* ignore */
           }
         }
         setMessages((prev) => {
           const c = [...prev];
-          c[c.length - 1] = { role: "assistant", content: acc };
+          c[c.length - 1] = {
+            role: "assistant",
+            content: errorMsg ? `出错了：${errorMsg}` : acc,
+          };
           return c;
         });
       }
-      if (!acc.trim()) {
+      if (!acc.trim() && !errorMsg) {
         setMessages((prev) => {
           const c = [...prev];
           c[c.length - 1] = { role: "assistant", content: "（无回复）" };
@@ -88,6 +126,8 @@ export default function Assistant() {
         return c;
       });
     } finally {
+      stopTimer();
+      setStatus("");
       setLoading(false);
     }
   };
@@ -129,7 +169,7 @@ export default function Assistant() {
               <Empty
                 description={
                   <Typography.Text type="secondary">
-                    你好，我是配置助手。可以问我如何添加供应商、配置模型与复杂度路由、接入 Skill/MCP、客户端调用方式等。
+                    你好，我是配置助手。可以问我如何添加供应商、配置模型与复杂度路由、接入 Skill/MCP、客户端调用方式等，也可以让我直接安装 Skill / MCP。
                   </Typography.Text>
                 }
                 style={{ marginTop: 48 }}
@@ -161,12 +201,30 @@ export default function Assistant() {
                       wordBreak: "break-word",
                     }}
                   >
-                    {m.content || (loading && m.role === "assistant" ? "思考中…" : "")}
+                    {m.content || (loading && i === messages.length - 1 ? "…" : "")}
                   </div>
                 </div>
               </div>
             ))}
           </div>
+
+          {loading && (
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                padding: "4px 2px 8px",
+                color: "#8c8c8c",
+                fontSize: 12,
+              }}
+            >
+              <LoadingOutlined spin />
+              <span>{status || "处理中…"}</span>
+              <span>· 已用时 {elapsed}s</span>
+            </div>
+          )}
+
           <Space.Compact style={{ width: "100%" }}>
             <Input.TextArea
               value={input}

@@ -8,6 +8,7 @@ import { listSkills, listMcpServers } from "../db/repos/ext.js";
 import { listApiKeys } from "../db/repos/auth.js";
 import { combineBuiltinSkills } from "./skills.js";
 import { ASSISTANT_TOOLS, executeAssistantTool } from "./tools.js";
+import { fakeOpenAIStream, genId } from "../gateway/respond.js";
 
 export interface AssistantResult {
   message: ChatMessage;
@@ -96,13 +97,16 @@ function resolveAssistantModel(): ModelWithProvider | undefined {
   return enabled[0];
 }
 
-/**
- * 处理网页内 AI 助手的对话（含受限的安装工具循环）。
- * 沙箱约束：仅使用内置配置 Skill + 配置快照作为系统提示；工具仅限白名单内的安装工具
- * （search_catalog / install_skill / install_mcp），不注入用户 Skill、不注入 MCP 工具、不做复杂度路由。
- */
-export async function handleAssistantChat(
+const TOOL_LABELS: Record<string, string> = {
+  search_catalog: "搜索安装目录",
+  install_skill: "安装 Skill",
+  install_mcp: "安装 MCP 服务器",
+};
+
+/** 运行助手循环，通过 onProgress 回报当前进度 */
+async function runAssistantLoop(
   messages: ChatMessage[],
+  onProgress: (msg: string) => void,
 ): Promise<AssistantResult> {
   const cand = resolveAssistantModel();
   if (!cand) {
@@ -124,6 +128,7 @@ export async function handleAssistantChat(
   let lastMessage: ChatMessage = { role: "assistant", content: null };
 
   for (let step = 0; step < maxSteps; step++) {
+    onProgress("正在思考…");
     const res = await adapter.chat({
       model: cand.model.name,
       messages: [{ role: "system", content: systemPrompt }, ...working],
@@ -143,6 +148,8 @@ export async function handleAssistantChat(
 
     working.push({ role: "assistant", content: res.message.content, tool_calls: calls });
     for (const tc of calls) {
+      const label = TOOL_LABELS[tc.function.name] ?? tc.function.name;
+      onProgress(`正在${label}…`);
       let args: Record<string, unknown> = {};
       try {
         args = JSON.parse(tc.function.arguments || "{}");
@@ -155,6 +162,7 @@ export async function handleAssistantChat(
       } catch (e) {
         content = `执行失败：${(e as Error).message}`;
       }
+      onProgress(`${label}完成`);
       working.push({ role: "tool", content, tool_call_id: tc.id });
     }
   }
@@ -165,4 +173,76 @@ export async function handleAssistantChat(
     modelName: cand.model.name,
     id: lastId,
   };
+}
+
+/**
+ * 处理网页内 AI 助手的对话（含受限的安装工具循环）。
+ * 沙箱约束：仅使用内置配置 Skill + 配置快照作为系统提示；工具仅限白名单内的安装工具
+ * （search_catalog / install_skill / install_mcp），不注入用户 Skill、不注入 MCP 工具、不做复杂度路由。
+ */
+export async function handleAssistantChat(
+  messages: ChatMessage[],
+): Promise<AssistantResult> {
+  return runAssistantLoop(messages, () => {});
+}
+
+/** 流式版本：先实时产出进度事件，再产出最终回答（OpenAI SSE 格式） */
+export async function* assistantChatStream(
+  messages: ChatMessage[],
+): AsyncIterable<string> {
+  const queue: string[] = [];
+  let finished = false;
+  let waiter: (() => void) | undefined;
+
+  const push = (s: string) => {
+    queue.push(s);
+    if (waiter) {
+      const w = waiter;
+      waiter = undefined;
+      w();
+    }
+  };
+
+  const task = (async () => {
+    try {
+      const result = await runAssistantLoop(messages, (msg) =>
+        push(`data: ${JSON.stringify({ type: "progress", message: msg })}\n\n`),
+      );
+      const final = {
+        content: result.message.content,
+        toolCalls: result.message.tool_calls,
+        usage: result.usage,
+      };
+      const meta = {
+        model: result.modelName,
+        id: result.id ?? genId("chatcmpl"),
+        created: Math.floor(Date.now() / 1000),
+        protocol: "openai" as const,
+      };
+      for await (const chunk of fakeOpenAIStream(final, meta)) push(chunk);
+    } catch (e) {
+      push(
+        `data: ${JSON.stringify({ type: "error", message: (e as Error).message })}\n\n`,
+      );
+      push(`data: [DONE]\n\n`);
+    } finally {
+      finished = true;
+      if (waiter) {
+        const w = waiter;
+        waiter = undefined;
+        w();
+      }
+    }
+  })();
+
+  for (;;) {
+    while (queue.length === 0 && !finished) {
+      await new Promise<void>((r) => {
+        waiter = r;
+      });
+    }
+    while (queue.length) yield queue.shift()!;
+    if (finished) break;
+  }
+  await task;
 }
