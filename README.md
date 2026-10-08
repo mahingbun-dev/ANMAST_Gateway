@@ -1,6 +1,6 @@
 # ANMAST Gateway
 
-一个自托管的 AI 网关，部署在 Mac Mini M4 上，为局域网/远程电脑提供统一的 AI 模型接入入口。
+一个自托管的 AI 网关，可部署在任意服务器/主机上，为局域网/远程电脑提供统一的 AI 模型接入入口。
 
 ## 功能
 
@@ -46,7 +46,7 @@
 ## 环境要求
 
 - **Node.js ≥ 23.4（推荐 24 LTS）**：依赖内置的 `node:sqlite` 模块。
-- macOS（Apple Silicon，部署目标 Mac Mini M4）。
+- macOS / Linux / Windows（跨平台，Apple Silicon 与 x86 均支持）。
 - pnpm（用于安装与构建）。
 
 ## 快速开始（开发）
@@ -65,7 +65,7 @@ pnpm dev:web
 
 首次启动会创建默认管理员：`admin / admin123456`（通过 `ADMIN_PASSWORD` 环境变量修改初始密码）。
 
-## 生产构建与部署（Mac Mini M4）
+## 生产构建与部署
 
 ```bash
 pnpm install
@@ -89,7 +89,7 @@ ADMIN_PASSWORD='你的初始密码' ./scripts/install-launchd.sh
 
 ### 1. 在管理界面配置
 
-1. 登录 `http://<mac-mini-ip>:4000/`（默认 admin/admin123456，请尽快在「设置」改密）。
+1. 登录 `http://<网关IP>:4000/`（默认 admin/admin123456，请尽快在「设置」改密）。
 2. 「供应商」页添加 OpenAI/Anthropic 供应商（填 Base URL 与 API Key，先「测试连接」通过后再保存）。
 3. 「模型」页添加模型：选择供应商后自动拉取可用模型，选中后自动带出上下文窗口；勾选适用的复杂度层级、设置价格（含缓存价格）与优先级；可把某个便宜模型标记为「路由模型」。
 4. 「路由与层级」页开启自动判定并选择路由模型、设置默认层级与 MCP 注入模式。
@@ -99,7 +99,7 @@ ADMIN_PASSWORD='你的初始密码' ./scripts/install-launchd.sh
 ### 2. 远程电脑调用（OpenAI 兼容）
 
 ```bash
-curl http://<mac-mini-ip>:4000/v1/chat/completions \
+curl http://<网关IP>:4000/v1/chat/completions \
   -H "Authorization: Bearer sk-anmast-xxx" \
   -H "Content-Type: application/json" \
   -d '{
@@ -114,14 +114,14 @@ curl http://<mac-mini-ip>:4000/v1/chat/completions \
 
 ```python
 from openai import OpenAI
-client = OpenAI(base_url="http://<mac-mini-ip>:4000/v1", api_key="sk-anmast-xxx")
+client = OpenAI(base_url="http://<网关IP>:4000/v1", api_key="sk-anmast-xxx")
 client.chat.completions.create(model="auto", messages=[{"role":"user","content":"你好"}])
 ```
 
 ### 3. Anthropic 兼容
 
 ```bash
-curl http://<mac-mini-ip>:4000/v1/messages \
+curl http://<网关IP>:4000/v1/messages \
   -H "x-api-key: sk-anmast-xxx" \
   -H "anthropic-version: 2023-06-01" \
   -H "Content-Type: application/json" \
@@ -140,7 +140,7 @@ Claude Code 可直接指向网关（Anthropic 协议）。网关会自动识别�
 // ~/.claude/settings.json
 {
   "env": {
-    "ANTHROPIC_BASE_URL": "http://<mac-mini-ip>:4000",
+    "ANTHROPIC_BASE_URL": "http://<网关IP>:4000",
     "ANTHROPIC_AUTH_TOKEN": "sk-anmast-xxx",
     "ANTHROPIC_MODEL": "auto"
   }

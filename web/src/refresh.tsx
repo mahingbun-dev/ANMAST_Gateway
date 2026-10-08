@@ -18,9 +18,19 @@ const RefreshContext = createContext<RefreshState>({
 
 /** 全局自动刷新：顶部开关 + 间隔秒数，所有页面共享，tick 变化时各页面重载 */
 export function RefreshProvider({ children }: { children: ReactNode }) {
-  const [enabled, setEnabled] = useState(false);
-  const [sec, setSec] = useState(3);
+  const [enabled, setEnabled] = useState(
+    () => localStorage.getItem("anmast_refresh_enabled") === "1",
+  );
+  const [sec, setSec] = useState(() => Number(localStorage.getItem("anmast_refresh_sec") ?? 3));
   const [tick, setTick] = useState(0);
+
+  useEffect(() => {
+    localStorage.setItem("anmast_refresh_enabled", enabled ? "1" : "0");
+  }, [enabled]);
+
+  useEffect(() => {
+    localStorage.setItem("anmast_refresh_sec", String(sec));
+  }, [sec]);
 
   useEffect(() => {
     if (!enabled) return;

@@ -10,6 +10,7 @@ import { api } from "../api";
 import { useCurrency } from "../currency";
 import { useRefresh } from "../refresh";
 import LiveSpeedCard from "../components/LiveSpeedCard";
+import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip } from "recharts";
 import dayjs from "dayjs";
 
 interface Stats {
@@ -45,17 +46,22 @@ export default function Dashboard() {
   const { currency, symbol, toDisplay, formatCost } = useCurrency();
   const { tick } = useRefresh();
 
-  const load = () => {
-    setLoading(true);
+  const load = (silent = false) => {
+    if (!silent) setLoading(true);
     api
       .get<Stats>("/api/stats")
       .then(setStats)
-      .finally(() => setLoading(false));
+      .finally(() => {
+        if (!silent) setLoading(false);
+      });
   };
-  useEffect(load, []);
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
-    if (tick > 0) load();
+    if (tick > 0) load(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tick]);
 
@@ -63,6 +69,18 @@ export default function Dashboard() {
   const maxRequests = Math.max(1, ...daily.map((d) => d.requests));
   const t = stats?.totals;
   const uncachedInput = t ? Math.max(0, t.prompt_tokens - t.cache_read_tokens - t.cache_creation_tokens) : 0;
+  // 近 30 天补齐（无数据的天按 0 排版）
+  const dailyMap = new Map(daily.map((d) => [d.day, d]));
+  const last30 = Array.from({ length: 30 }, (_, i) => {
+    const full = dayjs().subtract(29 - i, "day").format("YYYY-MM-DD");
+    const d = dailyMap.get(full);
+    return {
+      day: full.slice(5),
+      requests: d?.requests ?? 0,
+      tokens: d?.tokens ?? 0,
+      cost: d?.cost ?? 0,
+    };
+  });
 
   return (
     <Space direction="vertical" size={16} style={{ width: "100%" }}>
@@ -118,38 +136,21 @@ export default function Dashboard() {
       </Card>
 
       <Card title="近 30 天调用趋势" loading={loading}>
-        {daily.length === 0 ? (
-          <Empty description="暂无数据" />
-        ) : (
-          <div style={{ display: "flex", alignItems: "flex-end", gap: 4, height: 160 }}>
-            {daily.map((d) => (
-              <div
-                key={d.day}
-                title={`${d.day}: ${d.requests} 次`}
-                style={{
-                  flex: 1,
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                  justifyContent: "flex-end",
-                  height: "100%",
-                }}
-              >
-                <div
-                  style={{
-                    width: "70%",
-                    height: `${Math.max(4, (d.requests / maxRequests) * 140)}px`,
-                    background: "#2563eb",
-                    borderRadius: 3,
-                  }}
-                />
-              </div>
-            ))}
-          </div>
-        )}
-        <Typography.Text type="secondary" style={{ display: "block", marginTop: 8 }}>
-          {daily.length > 0 && `${daily[0].day} ~ ${daily[daily.length - 1].day}`}
-        </Typography.Text>
+        <ResponsiveContainer width="100%" height={220}>
+          <BarChart data={last30} margin={{ top: 8, right: 16, bottom: 8, left: 8 }}>
+            <CartesianGrid strokeDasharray="3 3" />
+            <XAxis dataKey="day" tick={{ fontSize: 11 }} interval={4} />
+            <YAxis tick={{ fontSize: 11 }} width={50} />
+            <RTooltip
+              formatter={(value: number, name: string) => [
+                name === "requests" ? `${value} 次` : `${value.toLocaleString()}`,
+                name === "requests" ? "调用次数" : name === "tokens" ? "Token" : "成本",
+              ]}
+              labelFormatter={(label) => `${dayjs().year()}-${label}`}
+            />
+            <Bar dataKey="requests" name="调用次数" fill="#2563eb" />
+          </BarChart>
+        </ResponsiveContainer>
       </Card>
 
       <Card title="模型用量排行" loading={loading}>

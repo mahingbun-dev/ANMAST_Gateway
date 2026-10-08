@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Card, Statistic, Space } from "antd";
+import { Card, Statistic, Space, Badge } from "antd";
 import { api } from "../api";
 
 interface LiveSpeed {
@@ -19,14 +19,27 @@ export default function LiveSpeedCard() {
     return () => clearInterval(t);
   }, []);
 
-  const fmt = (v: number | null) => (v == null ? "—" : v.toFixed(1));
+  const busy = live.active > 0;
+  // 有活跃请求但无流式速度（跨协议非流式处理中）→ 显示「处理中」
+  const fmt = (v: number | null) => {
+    if (v == null) return busy ? "处理中…" : "—";
+    return v.toFixed(1);
+  };
 
   return (
     <Card title="实时调用速度" size="small">
       <Space size={32} wrap>
-        <Statistic title="源速度" value={fmt(live.source_speed)} suffix="tok/s" />
-        <Statistic title="出口速度" value={fmt(live.egress_speed)} suffix="tok/s" />
-        <Statistic title="活跃请求" value={live.active} />
+        <Statistic
+          title={
+            <Space size={4}>
+              {busy && <Badge status="processing" />}
+              活跃请求
+            </Space>
+          }
+          value={live.active}
+        />
+        <Statistic title="源速度（输入）" value={fmt(live.source_speed)} suffix={live.source_speed != null ? "tok/s" : ""} />
+        <Statistic title="出口速度（输出）" value={fmt(live.egress_speed)} suffix={live.egress_speed != null ? "tok/s" : ""} />
       </Space>
     </Card>
   );

@@ -128,8 +128,8 @@ export default function Usage() {
     return q.toString();
   };
 
-  const load = () => {
-    setLoading(true);
+  const load = (silent = false) => {
+    if (!silent) setLoading(true);
     const q = query();
     Promise.all([
       api.get<Summary>(`/api/usage/summary?${q}`),
@@ -144,7 +144,9 @@ export default function Usage() {
         setKeyUsage(k);
       })
       .catch((e) => message.error((e as Error).message))
-      .finally(() => setLoading(false));
+      .finally(() => {
+        if (!silent) setLoading(false);
+      });
   };
 
   useEffect(() => {
@@ -153,7 +155,7 @@ export default function Usage() {
   }, [granularity]);
 
   useEffect(() => {
-    if (tick > 0) load();
+    if (tick > 0) load(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tick]);
 
@@ -229,10 +231,10 @@ export default function Usage() {
             showSearch
             optionFilterProp="label"
           />
-          <Button type="primary" onClick={load}>
+          <Button type="primary" onClick={() => load()}>
             查询
           </Button>
-          <Button icon={<ReloadOutlined />} onClick={load}>
+          <Button icon={<ReloadOutlined />} onClick={() => load()}>
             刷新
           </Button>
         </Space>
@@ -407,12 +409,12 @@ export default function Usage() {
         }
       >
         <Table
-          rowKey="api_key_id"
+          rowKey={(r: KeyUsage) => r.api_key_id ?? "__admin__"}
           dataSource={keyUsage}
           pagination={false}
           expandable={{
             expandedRowKeys: expandedKeys,
-            onExpandedRowsChange: (keys) => setExpandedKeys([...keys] as string[]),
+            onExpandedRowsChange: (keys) => setExpandedKeys(keys.map(String)),
             expandedRowRender: (r: KeyUsage) => (
               <Table
                 rowKey="model"

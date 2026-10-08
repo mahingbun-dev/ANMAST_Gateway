@@ -57,8 +57,8 @@ export default function Logs() {
   const { currency, formatCost } = useCurrency();
   const { tick } = useRefresh();
 
-  const load = (p = page, ps = pageSize) => {
-    setLoading(true);
+  const load = (p = page, ps = pageSize, silent = false) => {
+    if (!silent) setLoading(true);
     const q = new URLSearchParams({ page: String(p), pageSize: String(ps) });
     if (search) q.set("search", search);
     if (status) q.set("status", status);
@@ -69,7 +69,9 @@ export default function Logs() {
         setData(r.items);
         setTotal(r.total);
       })
-      .finally(() => setLoading(false));
+      .finally(() => {
+        if (!silent) setLoading(false);
+      });
   };
   useEffect(() => {
     load(1);
@@ -77,7 +79,7 @@ export default function Logs() {
   }, []);
 
   useEffect(() => {
-    if (tick > 0) load();
+    if (tick > 0) load(page, pageSize, true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tick]);
 
