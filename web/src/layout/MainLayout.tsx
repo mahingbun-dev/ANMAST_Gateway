@@ -1,6 +1,7 @@
 import { Layout, Menu, Typography, Button, Space } from "antd";
 import {
   DashboardOutlined,
+  BarChartOutlined,
   CloudServerOutlined,
   RobotOutlined,
   BranchesOutlined,
@@ -21,6 +22,7 @@ const { Sider, Header, Content } = Layout;
 
 const items = [
   { key: "/", icon: <DashboardOutlined />, label: "仪表盘" },
+  { key: "/usage", icon: <BarChartOutlined />, label: "用量详情" },
   { key: "/providers", icon: <CloudServerOutlined />, label: "供应商" },
   { key: "/models", icon: <RobotOutlined />, label: "模型" },
   { key: "/routing", icon: <BranchesOutlined />, label: "路由与层级" },

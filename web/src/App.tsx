@@ -13,6 +13,7 @@ import ApiKeys from "./pages/ApiKeys";
 import Logs from "./pages/Logs";
 import Conversations from "./pages/Conversations";
 import Settings from "./pages/Settings";
+import Usage from "./pages/Usage";
 
 function RequireAuth({ children }: { children: ReactNode }) {
   const { token } = useAuth();
@@ -33,6 +34,7 @@ export default function App() {
         }
       >
         <Route index element={<Dashboard />} />
+        <Route path="usage" element={<Usage />} />
         <Route path="providers" element={<Providers />} />
         <Route path="models" element={<Models />} />
         <Route path="routing" element={<Routing />} />

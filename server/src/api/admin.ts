@@ -55,6 +55,14 @@ import { importSkillFromContent, importSkillFromPath } from "../skills/importer.
 import { openaiJson, fakeOpenAIStream, genId } from "../gateway/respond.js";
 import { toReadable } from "../lib/stream.js";
 import type { ChatMessage } from "../types.js";
+import {
+  usageSummary,
+  usageTimeseries,
+  usageByModel,
+  usageByKey,
+  type UsageFilter,
+  type Granularity,
+} from "../db/repos/usage.js";
 import { logger } from "../logger.js";
 
 function maskKey(k: string): string {
@@ -67,6 +75,15 @@ function asJsonString(v: unknown, fallback: string): string {
   if (v == null) return fallback;
   if (typeof v === "string") return v;
   return JSON.stringify(v);
+}
+
+function parseUsageFilter(q: Record<string, string>): UsageFilter {
+  return {
+    from: q.from ? Number(q.from) : undefined,
+    to: q.to ? Number(q.to) : undefined,
+    model: q.model || undefined,
+    api_key_id: q.api_key_id || undefined,
+  };
 }
 
 const SETTINGS_DEFAULTS: Record<string, unknown> = {
@@ -560,6 +577,27 @@ export function registerAdminRoutes(app: FastifyInstance): void {
       byModel: statsByModel(),
       byKey: statsByKey(),
     };
+  });
+
+  // ---------- 用量详情 ----------
+  app.get("/api/usage/summary", async (req) => {
+    return usageSummary(parseUsageFilter(req.query as Record<string, string>));
+  });
+
+  app.get("/api/usage/timeseries", async (req) => {
+    const q = req.query as Record<string, string>;
+    const granularity: Granularity = ["day", "week", "month", "year"].includes(q.granularity)
+      ? (q.granularity as Granularity)
+      : "day";
+    return usageTimeseries(granularity, parseUsageFilter(q));
+  });
+
+  app.get("/api/usage/models", async (req) => {
+    return usageByModel(parseUsageFilter(req.query as Record<string, string>));
+  });
+
+  app.get("/api/usage/keys", async (req) => {
+    return usageByKey(parseUsageFilter(req.query as Record<string, string>));
   });
 
   // ---------- 设置 ----------
