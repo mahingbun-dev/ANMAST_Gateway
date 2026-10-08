@@ -1,4 +1,4 @@
-import { Layout, Menu, Typography, Button, Space } from "antd";
+import { Layout, Menu, Typography, Button, Space, Switch, InputNumber } from "antd";
 import {
   DashboardOutlined,
   BarChartOutlined,
@@ -15,7 +15,9 @@ import {
 } from "@ant-design/icons";
 import { Outlet, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../auth";
+import { useRefresh } from "../refresh";
 import Assistant from "../components/Assistant";
+import StatusBar from "../components/StatusBar";
 import { CurrencyProvider } from "../currency";
 
 const { Sider, Header, Content } = Layout;
@@ -38,6 +40,7 @@ export default function MainLayout() {
   const navigate = useNavigate();
   const location = useLocation();
   const { logout, username } = useAuth();
+  const { enabled, setEnabled, sec, setSec } = useRefresh();
 
   const selectedKey = items
     .map((i) => i.key)
@@ -84,6 +87,21 @@ export default function MainLayout() {
             AI 网关控制台
           </Typography.Title>
           <Space>
+            <Typography.Text type="secondary">自动刷新</Typography.Text>
+            <Switch size="small" checked={enabled} onChange={setEnabled} />
+            {enabled && (
+              <>
+                <InputNumber
+                  size="small"
+                  min={1}
+                  max={3600}
+                  value={sec}
+                  onChange={(v) => setSec(v ?? 3)}
+                  style={{ width: 60 }}
+                />
+                <Typography.Text type="secondary">秒</Typography.Text>
+              </>
+            )}
             <Typography.Text type="secondary">{username ?? "admin"}</Typography.Text>
             <Button
               icon={<LogoutOutlined />}
@@ -96,10 +114,11 @@ export default function MainLayout() {
             </Button>
           </Space>
         </Header>
-        <Content style={{ padding: 24, overflow: "auto" }}>
+        <Content style={{ padding: "24px 24px 44px", overflow: "auto" }}>
           <Outlet />
         </Content>
       </Layout>
+      <StatusBar />
       <Assistant />
     </Layout>
     </CurrencyProvider>

@@ -14,7 +14,7 @@ import { ReloadOutlined } from "@ant-design/icons";
 import { Tooltip } from "antd";
 import { api } from "../api";
 import { useCurrency } from "../currency";
-import AutoRefresh from "../components/AutoRefresh";
+import { useRefresh } from "../refresh";
 import dayjs from "dayjs";
 
 interface RequestRecord {
@@ -55,6 +55,7 @@ export default function Logs() {
   const [protocol, setProtocol] = useState<string | undefined>();
   const [detail, setDetail] = useState<RequestRecord & { messages?: { role: string; content: string | null }[] } | null>(null);
   const { currency, formatCost } = useCurrency();
+  const { tick } = useRefresh();
 
   const load = (p = page, ps = pageSize) => {
     setLoading(true);
@@ -74,6 +75,11 @@ export default function Logs() {
     load(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (tick > 0) load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tick]);
 
   const openDetail = async (id: string) => {
     const r = await api.get<RequestRecord & { messages?: { role: string; content: string | null }[] }>(`/api/logs/${id}`);
@@ -128,7 +134,6 @@ export default function Logs() {
         <Button icon={<ReloadOutlined />} onClick={() => load(page, pageSize)}>
           刷新
         </Button>
-        <AutoRefresh onRefresh={() => load(page, pageSize)} />
       </Space>
 
       <Table
@@ -225,10 +230,7 @@ export default function Logs() {
               const fmt = (v: number | null) => (v == null ? "—" : v.toFixed(1));
               return (
                 <Space direction="vertical" size={0} style={{ fontSize: 12 }}>
-                  <span>
-                    源 {fmt(r.source_speed)}
-                    {r.status === "streaming" && <Tag color="green" style={{ marginLeft: 4, fontSize: 10 }}>实时</Tag>}
-                  </span>
+                  <span>源 {fmt(r.source_speed)}</span>
                   <span>出 {fmt(r.egress_speed)}</span>
                 </Space>
               );

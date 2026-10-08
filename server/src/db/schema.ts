@@ -159,6 +159,10 @@ export const migrations: string[] = [
   `
   ALTER TABLE requests ADD COLUMN first_token_ms INTEGER;
   `,
+  // v5 —— 模型用途：normal（正常参与复杂度路由）/ router_only（仅判定）/ assistant_only（仅助手）
+  `
+  ALTER TABLE models ADD COLUMN usage TEXT NOT NULL DEFAULT 'normal';
+  `,
 ];
 
 export const DEFAULT_TIERS: { id: string; name: string; description: string; sort: number }[] = [

@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate } from "react-router-dom";
 import type { ReactNode } from "react";
 import { useAuth } from "./auth";
+import { RefreshProvider } from "./refresh";
 import MainLayout from "./layout/MainLayout";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
@@ -23,29 +24,31 @@ function RequireAuth({ children }: { children: ReactNode }) {
 
 export default function App() {
   return (
-    <Routes>
-      <Route path="/login" element={<Login />} />
-      <Route
-        path="/"
-        element={
-          <RequireAuth>
-            <MainLayout />
-          </RequireAuth>
-        }
-      >
-        <Route index element={<Dashboard />} />
-        <Route path="usage" element={<Usage />} />
-        <Route path="providers" element={<Providers />} />
-        <Route path="models" element={<Models />} />
-        <Route path="routing" element={<Routing />} />
-        <Route path="skills" element={<Skills />} />
-        <Route path="mcp" element={<Mcp />} />
-        <Route path="keys" element={<ApiKeys />} />
-        <Route path="logs" element={<Logs />} />
-        <Route path="conversations" element={<Conversations />} />
-        <Route path="settings" element={<Settings />} />
-      </Route>
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+    <RefreshProvider>
+      <Routes>
+        <Route path="/login" element={<Login />} />
+        <Route
+          path="/"
+          element={
+            <RequireAuth>
+              <MainLayout />
+            </RequireAuth>
+          }
+        >
+          <Route index element={<Dashboard />} />
+          <Route path="usage" element={<Usage />} />
+          <Route path="providers" element={<Providers />} />
+          <Route path="models" element={<Models />} />
+          <Route path="routing" element={<Routing />} />
+          <Route path="skills" element={<Skills />} />
+          <Route path="mcp" element={<Mcp />} />
+          <Route path="keys" element={<ApiKeys />} />
+          <Route path="logs" element={<Logs />} />
+          <Route path="conversations" element={<Conversations />} />
+          <Route path="settings" element={<Settings />} />
+        </Route>
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </RefreshProvider>
   );
 }

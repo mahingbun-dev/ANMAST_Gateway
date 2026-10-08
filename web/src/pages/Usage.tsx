@@ -27,7 +27,7 @@ import {
 } from "recharts";
 import { api } from "../api";
 import { useCurrency } from "../currency";
-import AutoRefresh from "../components/AutoRefresh";
+import { useRefresh } from "../refresh";
 import dayjs, { type Dayjs } from "dayjs";
 
 const { RangePicker } = DatePicker;
@@ -116,6 +116,7 @@ export default function Usage() {
   const [keyUsage, setKeyUsage] = useState<KeyUsage[]>([]);
   const [metric, setMetric] = useState<string>("requests");
   const [loading, setLoading] = useState(false);
+  const { tick } = useRefresh();
 
   const query = () => {
     const q = new URLSearchParams();
@@ -149,6 +150,11 @@ export default function Usage() {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [granularity]);
+
+  useEffect(() => {
+    if (tick > 0) load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tick]);
 
   useEffect(() => {
     api.get<{ name: string; display_name: string }[]>("/api/models").then((ms) => setModelOpts(ms));
@@ -228,7 +234,6 @@ export default function Usage() {
           <Button icon={<ReloadOutlined />} onClick={load}>
             刷新
           </Button>
-          <AutoRefresh onRefresh={load} />
         </Space>
       </Card>
 

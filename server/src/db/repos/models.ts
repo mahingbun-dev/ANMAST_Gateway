@@ -90,6 +90,7 @@ export interface ModelInput {
   output_price: number;
   priority: number;
   is_router: number;
+  usage: string;
   enabled: number;
 }
 
@@ -98,8 +99,8 @@ export function createModel(input: ModelInput): ModelConfig {
   const now = Date.now();
   getDb()
     .prepare(
-      `INSERT INTO models (id, provider_id, name, display_name, tiers, capabilities, context_window, input_price, input_cache_read_price, input_cache_write_price, output_price, priority, is_router, enabled, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO models (id, provider_id, name, display_name, tiers, capabilities, context_window, input_price, input_cache_read_price, input_cache_write_price, output_price, priority, is_router, usage, enabled, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       id,
@@ -115,6 +116,7 @@ export function createModel(input: ModelInput): ModelConfig {
       input.output_price,
       input.priority,
       input.is_router,
+      input.usage ?? "normal",
       input.enabled,
       now,
       now,
@@ -128,7 +130,7 @@ export function updateModel(id: string, patch: Partial<ModelInput>): ModelConfig
   const next = { ...existing, ...patch, updated_at: Date.now() };
   getDb()
     .prepare(
-      `UPDATE models SET provider_id=?, name=?, display_name=?, tiers=?, capabilities=?, context_window=?, input_price=?, input_cache_read_price=?, input_cache_write_price=?, output_price=?, priority=?, is_router=?, enabled=?, updated_at=? WHERE id=?`,
+      `UPDATE models SET provider_id=?, name=?, display_name=?, tiers=?, capabilities=?, context_window=?, input_price=?, input_cache_read_price=?, input_cache_write_price=?, output_price=?, priority=?, is_router=?, usage=?, enabled=?, updated_at=? WHERE id=?`,
     )
     .run(
       next.provider_id,
@@ -143,6 +145,7 @@ export function updateModel(id: string, patch: Partial<ModelInput>): ModelConfig
       next.output_price,
       next.priority,
       next.is_router,
+      next.usage ?? "normal",
       next.enabled,
       next.updated_at,
       id,

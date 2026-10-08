@@ -41,6 +41,7 @@ interface Model {
   output_price: number;
   priority: number;
   is_router: number;
+  usage?: string;
   enabled: number;
   provider_name?: string;
 }
@@ -48,6 +49,9 @@ interface DiscoveredModel {
   id: string;
   context_window: number | null;
 }
+
+const ROUTER_ONLY = "__router_only__";
+const ASSISTANT_ONLY = "__assistant_only__";
 
 function parseTiers(m: Model): string[] {
   try {
@@ -112,7 +116,6 @@ export default function Models() {
       form.setFieldsValue({ context_window: found.context_window });
       return;
     }
-    // 列表未携带上下文，尝试拉取详情
     setContextLoading(true);
     try {
       const r = await api.get<{ context_window: number | null }>(
@@ -139,12 +142,12 @@ export default function Models() {
       output_price: 0,
       priority: 100,
       is_router: false,
-      enabled: true,
       tools: true,
       vision: false,
     });
     setOpen(true);
   };
+
   const openEdit = (m: Model) => {
     setEditing(m);
     let cap: { tools?: boolean; vision?: boolean } = {};
@@ -153,10 +156,12 @@ export default function Models() {
     } catch {
       /* ignore */
     }
+    let tiersField = parseTiers(m);
+    if (m.usage === "router_only") tiersField = [ROUTER_ONLY];
+    else if (m.usage === "assistant_only") tiersField = [ASSISTANT_ONLY];
     form.setFieldsValue({
       ...m,
-      tiers: parseTiers(m),
-      enabled: !!m.enabled,
+      tiers: tiersField,
       is_router: !!m.is_router,
       tools: cap.tools !== false,
       vision: !!cap.vision,
@@ -169,10 +174,33 @@ export default function Models() {
     setOpen(true);
   };
 
+  const onTiersChange = (vals: string[]) => {
+    const special = vals.find((v) => v === ROUTER_ONLY || v === ASSISTANT_ONLY);
+    if (special) {
+      form.setFieldsValue({ tiers: [special] });
+      if (special === ROUTER_ONLY) form.setFieldsValue({ is_router: true });
+    } else {
+      form.setFieldsValue({ tiers: vals });
+    }
+  };
+
   const submit = async () => {
     const values = await form.validateFields();
+    const tierVals: string[] = values.tiers ?? [];
+    let usage = "normal";
+    let tiersArr = tierVals;
+    if (tierVals.includes(ROUTER_ONLY)) {
+      usage = "router_only";
+      tiersArr = [];
+    } else if (tierVals.includes(ASSISTANT_ONLY)) {
+      usage = "assistant_only";
+      tiersArr = [];
+    }
     const body = {
       ...values,
+      tiers: tiersArr,
+      usage,
+      is_router: usage === "router_only" ? true : !!values.is_router,
       input_price: fromDisplay(Number(values.input_price ?? 0)),
       input_cache_read_price: fromDisplay(Number(values.input_cache_read_price ?? 0)),
       input_cache_write_price: fromDisplay(Number(values.input_cache_write_price ?? 0)),
@@ -186,6 +214,16 @@ export default function Models() {
       else await api.post("/api/models", body);
       message.success("已保存");
       setOpen(false);
+      load();
+    } catch (e) {
+      message.error((e as Error).message);
+    }
+  };
+
+  const toggleEnabled = async (m: Model) => {
+    try {
+      await api.put(`/api/models/${m.id}`, { enabled: m.enabled ? 0 : 1 });
+      message.success(m.enabled ? `已停用 ${m.display_name || m.name}` : `已启用 ${m.display_name || m.name}`);
       load();
     } catch (e) {
       message.error((e as Error).message);
@@ -219,14 +257,17 @@ export default function Models() {
           { title: "模型 ID", dataIndex: "name", render: (v: string) => <Tag>{v}</Tag> },
           { title: "供应商", dataIndex: "provider_name" },
           {
-            title: "复杂度层级",
+            title: "用途 / 复杂度层级",
             dataIndex: "tiers",
-            render: (_: string, r: Model) =>
-              parseTiers(r).map((t) => (
+            render: (_: string, r: Model) => {
+              if (r.usage === "router_only") return <Tag color="cyan">仅复杂度判定</Tag>;
+              if (r.usage === "assistant_only") return <Tag color="geekblue">仅AI助手</Tag>;
+              return parseTiers(r).map((t) => (
                 <Tag key={t} color="purple">
                   {tierName(t)}
                 </Tag>
-              )),
+              ));
+            },
           },
           {
             title: "路由模型",
@@ -252,7 +293,14 @@ export default function Models() {
           {
             title: "状态",
             dataIndex: "enabled",
-            render: (v: number) => <Tag color={v ? "green" : "default"}>{v ? "启用" : "停用"}</Tag>,
+            render: (v: number, r: Model) => (
+              <Switch
+                checked={!!v}
+                checkedChildren="启用"
+                unCheckedChildren="停用"
+                onChange={() => toggleEnabled(r)}
+              />
+            ),
           },
           {
             title: "操作",
@@ -317,10 +365,20 @@ export default function Models() {
           <Form.Item name="display_name" label="显示名">
             <Input placeholder="GPT-4o" />
           </Form.Item>
-          <Form.Item name="tiers" label="适用的复杂度层级" rules={[{ required: true }]}>
+          <Form.Item
+            name="tiers"
+            label="适用的复杂度层级"
+            rules={[{ required: true }]}
+            extra="选择「仅作为…」后，该模型不参与普通复杂度路由，仅用于对应用途"
+          >
             <Select
               mode="multiple"
-              options={tiers.map((t) => ({ value: t.id, label: `${t.name} (${t.id})` }))}
+              onChange={onTiersChange}
+              options={[
+                ...tiers.map((t) => ({ value: t.id, label: `${t.name} (${t.id})` })),
+                { value: ROUTER_ONLY, label: "仅作为复杂度判定模型" },
+                { value: ASSISTANT_ONLY, label: "仅作为网页AI助手模型" },
+              ]}
             />
           </Form.Item>
           <Space size={16} style={{ display: "flex" }}>
@@ -356,9 +414,6 @@ export default function Models() {
               <Switch />
             </Form.Item>
             <Form.Item name="vision" label="支持视觉" valuePropName="checked">
-              <Switch />
-            </Form.Item>
-            <Form.Item name="enabled" label="启用" valuePropName="checked">
               <Switch />
             </Form.Item>
           </Space>

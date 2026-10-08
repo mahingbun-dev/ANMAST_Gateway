@@ -32,3 +32,24 @@ export function finishLiveStream(id: string): { firstTokenAt: number | null } {
 export function getLiveStream(id: string): LiveStream | undefined {
   return streams.get(id);
 }
+
+/** 全局实时速度：聚合所有在途流式请求（tokens/秒） */
+export function getGlobalLiveSpeed(): {
+  source_speed: number | null;
+  egress_speed: number | null;
+  active: number;
+} {
+  const now = Date.now();
+  let tokens = 0;
+  let durationMs = 0;
+  let active = 0;
+  for (const s of streams.values()) {
+    if (s.firstTokenAt) {
+      tokens += s.tokens;
+      durationMs += now - s.firstTokenAt;
+      active++;
+    }
+  }
+  const speed = active > 0 && durationMs > 0 ? tokens / (durationMs / 1000) : null;
+  return { source_speed: speed, egress_speed: speed, active };
+}

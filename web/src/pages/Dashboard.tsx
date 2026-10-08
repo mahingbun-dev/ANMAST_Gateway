@@ -8,7 +8,7 @@ import {
 } from "@ant-design/icons";
 import { api } from "../api";
 import { useCurrency } from "../currency";
-import AutoRefresh from "../components/AutoRefresh";
+import { useRefresh } from "../refresh";
 import dayjs from "dayjs";
 
 interface Stats {
@@ -42,6 +42,7 @@ export default function Dashboard() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
   const { currency, symbol, toDisplay, formatCost } = useCurrency();
+  const { tick } = useRefresh();
 
   const load = () => {
     setLoading(true);
@@ -52,6 +53,11 @@ export default function Dashboard() {
   };
   useEffect(load, []);
 
+  useEffect(() => {
+    if (tick > 0) load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tick]);
+
   const daily = stats?.daily ?? [];
   const maxRequests = Math.max(1, ...daily.map((d) => d.requests));
   const t = stats?.totals;
@@ -59,9 +65,6 @@ export default function Dashboard() {
 
   return (
     <Space direction="vertical" size={16} style={{ width: "100%" }}>
-      <Space style={{ justifyContent: "flex-end", width: "100%" }}>
-        <AutoRefresh onRefresh={load} />
-      </Space>
       <Row gutter={16}>
         <Col span={6}>
           <Card loading={loading}>

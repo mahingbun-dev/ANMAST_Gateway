@@ -30,6 +30,11 @@ export function listEnabledModels(): ModelWithProvider[] {
   return out;
 }
 
+/** 仅列出可参与复杂度路由的模型（排除「仅判定」「仅助手」等特殊用途） */
+export function listRoutableModels(): ModelWithProvider[] {
+  return listEnabledModels().filter((x) => (x.model.usage ?? "normal") === "normal");
+}
+
 function parseTiers(model: ModelConfig): string[] {
   try {
     const t = JSON.parse(model.tiers);
@@ -67,12 +72,13 @@ export function resolveModel(
   }
 
   // 2. 复杂度路由
+  const routable = listRoutableModels();
   let tier = complexity && tierList.includes(complexity) ? complexity : null;
   const source: TierSource = tier ? "explicit" : "fallback";
   let used = tier;
 
   const candidatesFor = (t: string): ModelWithProvider[] =>
-    enabled
+    routable
       .filter((x) => parseTiers(x.model).includes(t))
       .sort((a, b) => a.model.priority - b.model.priority);
 
@@ -99,9 +105,9 @@ export function resolveModel(
     }
   }
 
-  // 4. 仍然没有 → 使用任意可用模型
+  // 4. 仍然没有 → 使用任意可路由模型
   if (candidates.length === 0) {
-    candidates = enabled.slice().sort((a, b) => a.model.priority - b.model.priority);
+    candidates = routable.slice().sort((a, b) => a.model.priority - b.model.priority);
   }
 
   return {
@@ -173,7 +179,7 @@ export async function autoDetectComplexity(messages: ChatMessage[]): Promise<str
 }
 
 export function pickByTier(tier: string): ModelWithProvider | undefined {
-  return listEnabledModels()
+  return listRoutableModels()
     .filter((x) => parseTiers(x.model).includes(tier))
     .sort((a, b) => a.model.priority - b.model.priority)[0];
 }

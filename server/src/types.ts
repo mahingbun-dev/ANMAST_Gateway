@@ -28,6 +28,7 @@ export interface ModelConfig {
   output_price: number;
   priority: number;
   is_router: number;
+  usage: string;
   enabled: number;
   created_at: number;
   updated_at: number;

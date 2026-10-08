@@ -29,6 +29,7 @@ interface Model {
   name: string;
   display_name: string;
   is_router: number;
+  enabled: number;
 }
 interface Settings {
   router_model_id: string;
@@ -171,7 +172,8 @@ export default function Routing() {
                 onChange={(v) => setSettings({ ...settings, router_model_id: v })}
                 options={routerModels.map((m) => ({
                   value: m.id,
-                  label: `${m.display_name || m.name} (${m.name})`,
+                  label: `${m.display_name || m.name} (${m.name})${m.enabled ? "" : "（停用）"}`,
+                  disabled: !m.enabled,
                 }))}
               />
             </div>
@@ -189,7 +191,8 @@ export default function Routing() {
                 onChange={(v) => setSettings({ ...settings, assistant_model_id: v ?? "" })}
                 options={models.map((m) => ({
                   value: m.id,
-                  label: `${m.display_name || m.name} (${m.name})`,
+                  label: `${m.display_name || m.name} (${m.name})${m.enabled ? "" : "（停用）"}`,
+                  disabled: !m.enabled,
                 }))}
               />
             </div>
