@@ -9,6 +9,7 @@ import {
 import { api } from "../api";
 import { useCurrency } from "../currency";
 import { useRefresh } from "../refresh";
+import LiveSpeedCard from "../components/LiveSpeedCard";
 import dayjs from "dayjs";
 
 interface Stats {
@@ -65,6 +66,7 @@ export default function Dashboard() {
 
   return (
     <Space direction="vertical" size={16} style={{ width: "100%" }}>
+      <LiveSpeedCard />
       <Row gutter={16}>
         <Col span={6}>
           <Card loading={loading}>

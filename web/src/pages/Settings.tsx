@@ -1,7 +1,22 @@
-import { useEffect, useState } from "react";
-import { Card, Form, Input, Button, message, Typography, Space, Descriptions, Alert, Segmented, InputNumber } from "antd";
-import { api } from "../api";
+import { useEffect, useRef, useState } from "react";
+import {
+  Card,
+  Form,
+  Input,
+  Button,
+  message,
+  Typography,
+  Space,
+  Descriptions,
+  Alert,
+  Segmented,
+  InputNumber,
+  Modal,
+  Divider,
+} from "antd";
+import { api, getToken } from "../api";
 import { useCurrency } from "../currency";
+import dayjs from "dayjs";
 
 interface SystemInfo {
   requests: number;
@@ -20,11 +35,16 @@ export default function Settings() {
   const { currency, rate, reload } = useCurrency();
   const [cur, setCur] = useState<"CNY" | "USD">(currency);
   const [rateVal, setRateVal] = useState(rate);
+  const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setCur(currency);
     setRateVal(rate);
   }, [currency, rate]);
+
+  useEffect(() => {
+    api.get<SystemInfo>("/api/system").then(setSys);
+  }, []);
 
   const saveCurrency = async () => {
     try {
@@ -35,10 +55,6 @@ export default function Settings() {
       message.error((e as Error).message);
     }
   };
-
-  useEffect(() => {
-    api.get<SystemInfo>("/api/system").then(setSys);
-  }, []);
 
   const changePassword = async (v: { current: string; next: string; confirm: string }) => {
     if (v.next !== v.confirm) {
@@ -55,6 +71,105 @@ export default function Settings() {
     } finally {
       setLoading(false);
     }
+  };
+
+  // 二次确认
+  const doubleConfirm = (title: string, content: string, onOk: () => void) => {
+    Modal.confirm({
+      title,
+      content,
+      okText: "确认",
+      okType: "danger",
+      onOk: () => {
+        Modal.confirm({
+          title: "再次确认",
+          content: "该操作不可撤销，请确认是否继续？",
+          okText: "确定执行",
+          okType: "danger",
+          onOk: () => onOk(),
+        });
+      },
+    });
+  };
+
+  const resetData = () =>
+    doubleConfirm(
+      "重置数据",
+      "将清空所有调用记录、对话历史与消息（保留供应商、模型、密钥、Skill、MCP 等配置）。",
+      async () => {
+        try {
+          await api.post("/api/system/reset-data");
+          message.success("已重置所有计数器数据");
+          api.get<SystemInfo>("/api/system").then(setSys);
+        } catch (e) {
+          message.error((e as Error).message);
+        }
+      },
+    );
+
+  const factoryReset = () =>
+    doubleConfirm(
+      "恢复出厂设置",
+      "将删除所有用户数据（供应商、模型、密钥、Skill、MCP、调用记录、对话、设置等），恢复到安装初始状态。建议先执行备份！",
+      async () => {
+        try {
+          await api.post("/api/system/factory-reset");
+          message.success("已恢复出厂设置，即将跳转到登录页（默认 admin/admin123456）");
+          setTimeout(() => (window.location.href = "/login"), 1500);
+        } catch (e) {
+          message.error((e as Error).message);
+        }
+      },
+    );
+
+  const downloadBackup = async () => {
+    try {
+      const token = getToken();
+      const res = await fetch("/api/system/backup", {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) {
+        message.error("备份失败");
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `anmast-backup-${dayjs().format("YYYYMMDD-HHmmss")}.db`;
+      a.click();
+      URL.revokeObjectURL(url);
+      message.success("备份已下载");
+    } catch (e) {
+      message.error((e as Error).message);
+    }
+  };
+
+  const restoreBackup = (file: File) => {
+    doubleConfirm(
+      "恢复备份",
+      `将用「${file.name}」覆盖当前数据（会先清空当前所有用户数据），确定继续？`,
+      () => {
+        const reader = new FileReader();
+        reader.onload = async () => {
+          try {
+            const data = (reader.result as string).split(",")[1] ?? "";
+            await api.post("/api/system/restore", { data });
+            message.success("恢复成功，即将重新登录");
+            setTimeout(() => (window.location.href = "/login"), 1500);
+          } catch (e) {
+            message.error((e as Error).message);
+          }
+        };
+        reader.readAsDataURL(file);
+      },
+    );
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    if (f) restoreBackup(f);
+    e.target.value = "";
   };
 
   const base = `${window.location.protocol}//${window.location.host}`;
@@ -118,10 +233,10 @@ export default function Settings() {
         <Alert
           type="info"
           showIcon
-          message="远程电脑通过网关调用模型"
+          message="远程电脑 / 第三方平台通过网关调用模型"
           description={
             <Typography.Paragraph style={{ marginBottom: 0 }}>
-              网关提供 OpenAI 兼容与 Anthropic 兼容两种端点，使用「API 密钥」页创建的密钥认证。
+              网关提供 OpenAI 兼容与 Anthropic 兼容两种端点，使用「API 密钥」页创建的密钥认证（Bearer 或 x-api-key）。
             </Typography.Paragraph>
           }
         />
@@ -136,7 +251,21 @@ export default function Settings() {
               {base}/v1/messages
             </Typography.Text>
           </Descriptions.Item>
+          <Descriptions.Item label="模型列表">
+            <Typography.Text code copyable>
+              {base}/v1/models
+            </Typography.Text>
+          </Descriptions.Item>
+          <Descriptions.Item label="认证">
+            <Typography.Text code>Authorization: Bearer sk-anmast-xxx</Typography.Text>
+            {"　或　"}
+            <Typography.Text code>x-api-key: sk-anmast-xxx</Typography.Text>
+          </Descriptions.Item>
         </Descriptions>
+
+        <Divider orientation="left" plain>
+          调用参数
+        </Divider>
         <Typography.Paragraph>
           <pre style={{ background: "#f6f8fa", padding: 12, borderRadius: 6, overflow: "auto" }}>
 {`# OpenAI 兼容（用 gateway 的 key）
@@ -151,11 +280,71 @@ curl ${base}/v1/chat/completions \\
   }'`}
           </pre>
         </Typography.Paragraph>
-        <Typography.Paragraph type="secondary">
-          model 传 <Typography.Text code>auto</Typography.Text>（或省略）时按复杂度路由；传已配置的模型名则直连该模型。未传 complexity
-          且开启自动判定时，网关会自动分级。可在请求体附带 <Typography.Text code>skills</Typography.Text> 数组或{" "}
-          <Typography.Text code>gateway_tools: true</Typography.Text> 启用相应能力。
-        </Typography.Paragraph>
+        <Descriptions column={1} size="small" bordered style={{ marginTop: 8 }}>
+          <Descriptions.Item label="model">
+            <Typography.Text code>auto</Typography.Text>（或省略）按复杂度路由；填已配置的模型名直连该模型
+          </Descriptions.Item>
+          <Descriptions.Item label="complexity">
+            <Typography.Text code>low / medium / high</Typography.Text>（或自定义层级 id），显式指定复杂度；未传且开启自动判定时网关自动分级
+          </Descriptions.Item>
+          <Descriptions.Item label="conversation_id / session_id">
+            会话 id，用于聚合对话历史；未传时网关自动识别（如 Claude Code 的 session_id）或生成
+          </Descriptions.Item>
+          <Descriptions.Item label="skills">
+            字符串数组，显式激活的 Skill 名称/ID（受该密钥的 Skill 允许列表约束）
+          </Descriptions.Item>
+          <Descriptions.Item label="gateway_tools">
+            <Typography.Text code>true</Typography.Text> 时注入已启用 MCP 服务器的工具
+          </Descriptions.Item>
+          <Descriptions.Item label="stream">
+            <Typography.Text code>true</Typography.Text> 流式返回
+          </Descriptions.Item>
+          <Descriptions.Item label="多模态">
+            支持 <Typography.Text code>image_url</Typography.Text>（OpenAI）与 <Typography.Text code>image</Typography.Text>（Anthropic）图片透传
+          </Descriptions.Item>
+        </Descriptions>
+      </Card>
+
+      <Card title="备份与恢复">
+        <Alert
+          type="warning"
+          showIcon
+          message="备份包含所有用户数据（配置、密钥、调用记录、对话等），恢复会先清空当前数据。"
+        />
+        <Space style={{ marginTop: 16 }}>
+          <Button type="primary" onClick={downloadBackup}>
+            立即备份
+          </Button>
+          <Button onClick={() => fileRef.current?.click()}>恢复备份</Button>
+        </Space>
+        <input ref={fileRef} type="file" accept=".db" style={{ display: "none" }} onChange={handleFileSelect} />
+      </Card>
+
+      <Card title="重置">
+        <Space direction="vertical" style={{ width: "100%" }}>
+          <Space style={{ justifyContent: "space-between", width: "100%" }}>
+            <div>
+              <Typography.Text strong>重置数据</Typography.Text>
+              <div>
+                <Typography.Text type="secondary">清空所有计数器数据（调用记录、对话历史、消息），保留配置</Typography.Text>
+              </div>
+            </div>
+            <Button danger onClick={resetData}>
+              重置数据
+            </Button>
+          </Space>
+          <Space style={{ justifyContent: "space-between", width: "100%" }}>
+            <div>
+              <Typography.Text strong>恢复出厂设置</Typography.Text>
+              <div>
+                <Typography.Text type="secondary">删除所有用户数据，恢复到安装初始状态</Typography.Text>
+              </div>
+            </div>
+            <Button danger type="primary" onClick={factoryReset}>
+              恢复出厂设置
+            </Button>
+          </Space>
+        </Space>
       </Card>
 
       <Card title="系统信息">

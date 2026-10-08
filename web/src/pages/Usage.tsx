@@ -116,6 +116,7 @@ export default function Usage() {
   const [keyUsage, setKeyUsage] = useState<KeyUsage[]>([]);
   const [metric, setMetric] = useState<string>("requests");
   const [loading, setLoading] = useState(false);
+  const [expandedKeys, setExpandedKeys] = useState<string[]>([]);
   const { tick } = useRefresh();
 
   const query = () => {
@@ -410,6 +411,8 @@ export default function Usage() {
           dataSource={keyUsage}
           pagination={false}
           expandable={{
+            expandedRowKeys: expandedKeys,
+            onExpandedRowsChange: (keys) => setExpandedKeys([...keys] as string[]),
             expandedRowRender: (r: KeyUsage) => (
               <Table
                 rowKey="model"

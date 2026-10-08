@@ -17,7 +17,6 @@ import { Outlet, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../auth";
 import { useRefresh } from "../refresh";
 import Assistant from "../components/Assistant";
-import StatusBar from "../components/StatusBar";
 import { CurrencyProvider } from "../currency";
 
 const { Sider, Header, Content } = Layout;
@@ -114,11 +113,10 @@ export default function MainLayout() {
             </Button>
           </Space>
         </Header>
-        <Content style={{ padding: "24px 24px 44px", overflow: "auto" }}>
+        <Content style={{ padding: "24px 24px 24px", overflow: "auto" }}>
           <Outlet />
         </Content>
       </Layout>
-      <StatusBar />
       <Assistant />
     </Layout>
     </CurrencyProvider>

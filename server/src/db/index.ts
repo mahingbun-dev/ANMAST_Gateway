@@ -54,6 +54,14 @@ export function transaction<T>(fn: () => T): T {
 
 /** 初始化数据库、执行迁移、写入种子数据 */
 export async function initDb(): Promise<void> {
+  if (raw) {
+    try {
+      raw.close();
+    } catch {
+      /* ignore */
+    }
+    raw = null;
+  }
   raw = new DatabaseSync(config.dbPath);
   raw.exec("PRAGMA journal_mode = WAL");
   raw.exec("PRAGMA foreign_keys = ON");
@@ -69,6 +77,40 @@ export async function initDb(): Promise<void> {
     logger.info(`已应用数据库迁移 v${i + 1}`);
   }
 
+  seedDefaults();
+  await seedAdmin();
+}
+
+/** 关闭数据库（恢复备份前调用） */
+export function closeDb(): void {
+  if (raw) {
+    try {
+      raw.close();
+    } catch {
+      /* ignore */
+    }
+    raw = null;
+  }
+}
+
+/** 恢复出厂设置：清空所有用户数据，重新写入默认层级与管理员 */
+export async function resetToFactory(): Promise<void> {
+  const tables = [
+    "providers",
+    "models",
+    "api_keys",
+    "skills",
+    "mcp_servers",
+    "requests",
+    "messages",
+    "conversations",
+    "settings",
+    "sessions",
+    "tiers",
+  ];
+  for (const t of tables) {
+    getDb().exec(`DELETE FROM ${t}`);
+  }
   seedDefaults();
   await seedAdmin();
 }

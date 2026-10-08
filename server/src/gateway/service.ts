@@ -25,7 +25,7 @@ import {
   type FinalAnswer,
 } from "./respond.js";
 import { logger } from "../logger.js";
-import { startLiveStream, updateLiveStream, finishLiveStream } from "./live.js";
+import { startLiveStream, updateLiveStream, finishLiveStream, markActive, markDone } from "./live.js";
 
 export type GatewayResult =
   | { type: "json"; statusCode: number; headers: Record<string, string>; body: unknown }
@@ -276,6 +276,7 @@ export async function processChat(input: ProcessInput): Promise<GatewayResult> {
   const started = Date.now();
   const requestId = genId("req");
   const conversationId = parsed.conversationId || genId("conv");
+  markActive(requestId);
 
   // 1. 路由解析
   const isDirect =
@@ -429,6 +430,7 @@ export async function processChat(input: ProcessInput): Promise<GatewayResult> {
     return finalizeSuccess(run);
   } catch (e) {
     logger.error("网关处理失败", e);
+    markDone(requestId);
     updateRequest(requestId, {
       status: "error",
       error: (e as Error).message ?? "内部错误",
@@ -447,6 +449,7 @@ export async function processChat(input: ProcessInput): Promise<GatewayResult> {
   }
 
   function finalizeSuccess(run: RunResult): GatewayResult {
+    markDone(requestId);
     const model = run.candidate.model;
     const cost = calcCost(model, run.usage);
     const totalTokens = run.usage.promptTokens + run.usage.completionTokens;
@@ -544,6 +547,7 @@ async function* streamPassthrough(ctx: PassthroughCtx): AsyncIterable<string | U
       const { usage, content } = adapter.extractStreamUsage(buffered);
       const cost = calcCost(cand.model, usage);
       const { firstTokenAt } = finishLiveStream(ctx.requestId);
+      markDone(ctx.requestId);
       updateRequest(ctx.requestId, {
         model_used: cand.model.name,
         provider_id: cand.model.provider_id,
@@ -569,6 +573,7 @@ async function* streamPassthrough(ctx: PassthroughCtx): AsyncIterable<string | U
   }
   // 全部失败：输出错误事件
   finishLiveStream(ctx.requestId);
+  markDone(ctx.requestId);
   updateRequest(ctx.requestId, {
     status: "error",
     error: lastErr?.message ?? "上游调用失败",

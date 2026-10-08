@@ -1,6 +1,9 @@
 import type { FastifyInstance } from "fastify";
+import fs from "node:fs";
+import path from "node:path";
 import { authenticate, adminLogin, adminLogout } from "../auth/index.js";
-import { getDb, getSetting, setSetting } from "../db/index.js";
+import { getDb, getSetting, setSetting, closeDb, initDb, resetToFactory, transaction } from "../db/index.js";
+import { config } from "../config.js";
 import {
   listProviders,
   getProvider,
@@ -88,18 +91,26 @@ function parseUsageFilter(q: Record<string, string>): UsageFilter {
   };
 }
 
-/** 计算某条记录的源/出口平均速度（tokens/秒），按整个调用周期计算 */
+/** 计算某条记录的速度（tokens/秒）：源速度=输入处理速度，出口速度=输出生成速度 */
 function computeSpeed(r: {
   id: string;
   status: string;
+  prompt_tokens: number;
   completion_tokens: number;
   latency_ms: number;
   first_token_ms: number | null;
 }): { source_speed: number | null; egress_speed: number | null } {
   if (r.status === "streaming") return { source_speed: null, egress_speed: null };
-  const dur = r.latency_ms / 1000;
-  const spd = dur > 0 ? r.completion_tokens / dur : null;
-  return { source_speed: spd, egress_speed: spd };
+  const total = r.latency_ms;
+  if (total <= 0) return { source_speed: null, egress_speed: null };
+  const ttf = r.first_token_ms;
+  // 源速度：输入处理速度（到首 token 之前，无首 token 则用整个周期）
+  const srcDur = ttf != null && ttf > 0 ? ttf : total;
+  const src = r.prompt_tokens / (srcDur / 1000);
+  // 出口速度：输出生成速度（首 token 之后）
+  const egrDur = ttf != null && total > ttf ? total - ttf : total;
+  const egr = egrDur > 0 ? r.completion_tokens / (egrDur / 1000) : null;
+  return { source_speed: src, egress_speed: egr };
 }
 
 const SETTINGS_DEFAULTS: Record<string, unknown> = {
@@ -667,6 +678,68 @@ export function registerAdminRoutes(app: FastifyInstance): void {
       version: "0.1.0",
       uptime: Math.floor(process.uptime()),
     };
+  });
+
+  // ---------- 重置数据 / 恢复出厂 ----------
+  app.post("/api/system/reset-data", async (req, reply) => {
+    // 重置计数器数据：清空调用记录、消息、会话（保留配置）
+    try {
+      const db = getDb();
+      transaction(() => {
+        db.exec("DELETE FROM requests");
+        db.exec("DELETE FROM messages");
+        db.exec("DELETE FROM conversations");
+      });
+      return reply.send({ ok: true });
+    } catch (e) {
+      return reply.code(500).send({ error: (e as Error).message });
+    }
+  });
+
+  app.post("/api/system/factory-reset", async (req, reply) => {
+    // 恢复出厂设置：删除所有用户数据，恢复到初始状态
+    try {
+      await resetToFactory();
+      return reply.send({ ok: true });
+    } catch (e) {
+      return reply.code(500).send({ error: (e as Error).message });
+    }
+  });
+
+  // ---------- 备份 / 恢复 ----------
+  app.get("/api/system/backup", async (req, reply) => {
+    try {
+      const tmp = path.join(config.dataDir, `backup-${Date.now()}.db`);
+      getDb().exec(`VACUUM INTO '${tmp.replace(/'/g, "''")}'`);
+      const buf = fs.readFileSync(tmp);
+      fs.rmSync(tmp, { force: true });
+      reply.header("Content-Type", "application/octet-stream");
+      reply.header("Content-Disposition", `attachment; filename="anmast-backup-${new Date().toISOString().slice(0, 10)}.db"`);
+      return reply.send(buf);
+    } catch (e) {
+      return reply.code(500).send({ error: (e as Error).message });
+    }
+  });
+
+  app.post("/api/system/restore", async (req, reply) => {
+    const b = (req.body ?? {}) as { data?: string };
+    if (!b.data) return reply.code(400).send({ error: "缺少备份数据" });
+    try {
+      const buf = Buffer.from(b.data, "base64");
+      // 校验 SQLite 文件头
+      if (buf.length < 16 || buf.toString("utf8", 0, 15) !== "SQLite format 3") {
+        return reply.code(400).send({ error: "不是有效的 SQLite 备份文件" });
+      }
+      const tmp = path.join(config.dataDir, `restore-${Date.now()}.db`);
+      fs.writeFileSync(tmp, buf);
+      closeDb();
+      fs.copyFileSync(tmp, config.dbPath);
+      fs.rmSync(tmp, { force: true });
+      await initDb();
+      return reply.send({ ok: true });
+    } catch (e) {
+      return reply.code(500).send({ error: (e as Error).message });
+    }
   });
   });
 }
