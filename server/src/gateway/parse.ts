@@ -1,6 +1,6 @@
 import type { ChatMessage, ToolCall, ToolDefinition } from "../types.js";
 
-// 这些字段由网关处理/适配器显式设置，不应透传给上游
+// 这些字段由网关处理/适配器显式设置，或为协议专用字段，不应透传给上游
 const RESERVED = new Set([
   "model",
   "messages",
@@ -19,6 +19,12 @@ const RESERVED = new Set([
   "session_id",
   "gateway_tools",
   "__gateway",
+  // Anthropic / Claude Code 专用字段，不透传给 OpenAI 兼容上游
+  "thinking",
+  "context_management",
+  "output_config",
+  "metadata",
+  "tool_choice",
 ]);
 
 function stripReserved(body: Record<string, unknown>): Record<string, unknown> {

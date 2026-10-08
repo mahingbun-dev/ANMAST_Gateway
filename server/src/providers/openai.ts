@@ -47,7 +47,11 @@ function buildBody(req: NormalizedRequest): Record<string, unknown> {
     // 让上游在流末尾附带 usage，便于成本统计
     body.stream_options = { include_usage: true };
   }
-  if (req.extra) Object.assign(body, req.extra);
+  if (req.extra) {
+    const { __provider, ...rest } = req.extra;
+    void __provider;
+    Object.assign(body, rest);
+  }
   return body;
 }
 
