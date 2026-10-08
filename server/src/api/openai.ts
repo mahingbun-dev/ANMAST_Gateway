@@ -40,7 +40,7 @@ export function registerOpenAIRoutes(app: FastifyInstance): void {
     const isAnthropic = req.headers["x-api-key"] || req.headers["anthropic-version"];
     if (isAnthropic) {
       return reply.send({
-        data: models.map((m) => ({ id: m.id, display_name: m.id, created_at: m.created })),
+        data: models.map((m) => ({ id: m.id, display_name: m.display_name, created_at: m.created })),
         has_more: false,
         first_id: models[0]?.id ?? null,
         last_id: models[models.length - 1]?.id ?? null,

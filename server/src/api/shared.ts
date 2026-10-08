@@ -19,11 +19,29 @@ export function getCaller(
   return null;
 }
 
-export function listPublicModels(): { id: string; object: string; created: number; owned_by: string }[] {
-  return listEnabledModels().map((x) => ({
+export function listPublicModels(): {
+  id: string;
+  object: string;
+  created: number;
+  owned_by: string;
+  display_name: string;
+}[] {
+  const models = listEnabledModels().map((x) => ({
     id: x.model.name,
     object: "model",
     created: Math.floor(x.model.created_at / 1000),
     owned_by: x.provider.name,
+    display_name: x.model.display_name || x.model.name,
   }));
+  // 虚拟模型 auto：命中后按复杂度自动路由
+  return [
+    {
+      id: "auto",
+      object: "model",
+      created: 0,
+      owned_by: "anmast-gateway",
+      display_name: "auto（按复杂度路由）",
+    },
+    ...models,
+  ];
 }
