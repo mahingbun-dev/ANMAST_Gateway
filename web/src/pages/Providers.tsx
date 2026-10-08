@@ -40,6 +40,7 @@ export default function Providers() {
   const [testing, setTesting] = useState(false);
   const [testPassed, setTestPassed] = useState(false);
   const [modelCount, setModelCount] = useState<number | null>(null);
+  const [fullApiKey, setFullApiKey] = useState("");
   const [form] = Form.useForm();
 
   const load = () => {
@@ -55,6 +56,7 @@ export default function Providers() {
 
   const openCreate = () => {
     setEditing(null);
+    setFullApiKey("");
     form.resetFields();
     form.setFieldsValue({ type: "openai", enabled: true, extra_headers: "{}" });
     resetTest();
@@ -62,9 +64,11 @@ export default function Providers() {
   };
   const openEdit = (p: Provider) => {
     setEditing(p);
-    form.setFieldsValue({ ...p, enabled: !!p.enabled });
+    form.setFieldsValue({ ...p, enabled: !!p.enabled, api_key: "" });
     resetTest();
     setOpen(true);
+    // 拉取完整密钥用于「留空则保持原密钥」的测试与保存
+    api.get<Provider>(`/api/providers/${p.id}`).then((full) => setFullApiKey(full.api_key)).catch(() => setFullApiKey(""));
   };
 
   const runTest = async () => {
@@ -74,9 +78,10 @@ export default function Providers() {
     } catch {
       return;
     }
+    const apiKey = String(values.api_key ?? "").trim() || fullApiKey;
     setTesting(true);
     try {
-      const r = await api.post<TestResult>("/api/providers/test", values);
+      const r = await api.post<TestResult>("/api/providers/test", { ...values, api_key: apiKey });
       setTestPassed(true);
       setModelCount(r.models?.length ?? 0);
       message.success(`连接成功，发现 ${r.models?.length ?? 0} 个模型`);
@@ -94,9 +99,11 @@ export default function Providers() {
       return;
     }
     const values = await form.validateFields();
+    const apiKey = String(values.api_key ?? "").trim();
+    const body = { ...values, api_key: apiKey || fullApiKey };
     try {
-      if (editing) await api.put(`/api/providers/${editing.id}`, values);
-      else await api.post("/api/providers", values);
+      if (editing) await api.put(`/api/providers/${editing.id}`, body);
+      else await api.post("/api/providers", body);
       message.success("已保存");
       setOpen(false);
       load();
@@ -221,8 +228,8 @@ export default function Providers() {
           >
             <Input placeholder="https://api.openai.com/v1" />
           </Form.Item>
-          <Form.Item name="api_key" label="API Key">
-            <Input.Password placeholder="sk-..." />
+          <Form.Item name="api_key" label="API Key" extra={editing ? "留空则保持已保存的密钥" : undefined}>
+            <Input.Password placeholder={editing ? "留空则保持原密钥" : "sk-..."} />
           </Form.Item>
           <Form.Item name="extra_headers" label="额外请求头 (JSON)" extra='例如 {"X-Title":"app"}'>
             <Input.TextArea rows={2} placeholder="{}" />
