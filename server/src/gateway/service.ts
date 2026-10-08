@@ -527,6 +527,20 @@ interface PassthroughCtx {
   started: number;
 }
 
+/** 从 SSE 缓冲中提取实际输出内容文本长度（去除 JSON 框架开销），用于实时速度估算 */
+function extractContentLength(sse: string, protocol: string): number {
+  const re =
+    protocol === "anthropic"
+      ? /"text"\s*:\s*"((?:[^"\\]|\\.)*)"/g
+      : /"content"\s*:\s*"((?:[^"\\]|\\.)*)"/g;
+  let len = 0;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(sse))) {
+    len += m[1].replace(/\\(?:["\\/bfnrt]|u[0-9a-fA-F]{4})/g, " ").length;
+  }
+  return len;
+}
+
 /** 流式透传：转发上游字节流，同时缓冲文本用于统计 */
 async function* streamPassthrough(ctx: PassthroughCtx): AsyncIterable<string | Uint8Array> {
   let lastErr: Error | undefined;
@@ -541,7 +555,7 @@ async function* streamPassthrough(ctx: PassthroughCtx): AsyncIterable<string | U
       for await (const chunk of stream) {
         buffered += decoder.decode(chunk, { stream: true });
         yield chunk;
-        updateLiveStream(ctx.requestId, buffered.length);
+        updateLiveStream(ctx.requestId, extractContentLength(buffered, ctx.parsed.protocol));
       }
       buffered += decoder.decode();
       const { usage, content } = adapter.extractStreamUsage(buffered);
