@@ -8,7 +8,7 @@ export function insertRequest(r: RequestRecord): void {
     .prepare(
       `INSERT INTO requests
        (id, api_key_id, protocol, endpoint, model_requested, model_used, provider_id, tier_id, tier_source, conversation_id, status, error,
-        prompt_tokens, completion_tokens, total_tokens, cache_read_tokens, cache_creation_tokens, cost, latency_ms, request_json, response_json, client_ip, created_at)
+        prompt_tokens, completion_tokens, total_tokens, cache_read_tokens, cache_creation_tokens, cost, latency_ms, first_token_ms, request_json, response_json, client_ip, created_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
@@ -31,6 +31,7 @@ export function insertRequest(r: RequestRecord): void {
       r.cache_creation_tokens,
       r.cost,
       r.latency_ms,
+      r.first_token_ms ?? null,
       r.request_json,
       r.response_json,
       r.client_ip,
@@ -52,6 +53,7 @@ export function updateRequest(
       | "cache_creation_tokens"
       | "cost"
       | "latency_ms"
+      | "first_token_ms"
       | "response_json"
       | "conversation_id"
       | "model_used"
@@ -253,6 +255,37 @@ export function listConversations(filter: {
     )
     .all(...params, pageSize, (page - 1) * pageSize) as Conversation[];
   return { items: rows, total };
+}
+
+/** 批量获取若干对话各自使用过的模型及复杂度层级 */
+export function conversationModels(
+  conversationIds: string[],
+): Record<string, { model: string; tier_id: string | null; tier_name: string | null }[]> {
+  if (conversationIds.length === 0) return {};
+  const placeholders = conversationIds.map(() => "?").join(",");
+  const rows = getDb()
+    .prepare(
+      `SELECT r.conversation_id AS conversation_id, r.model_used AS model, r.tier_id AS tier_id, t.name AS tier_name
+       FROM requests r LEFT JOIN tiers t ON t.id = r.tier_id
+       WHERE r.conversation_id IN (${placeholders}) AND r.model_used != ''
+       GROUP BY r.conversation_id, r.model_used, r.tier_id`,
+    )
+    .all(...conversationIds) as {
+    conversation_id: string;
+    model: string;
+    tier_id: string | null;
+    tier_name: string | null;
+  }[];
+  const map: Record<string, { model: string; tier_id: string | null; tier_name: string | null }[]> = {};
+  for (const row of rows) {
+    if (!map[row.conversation_id]) map[row.conversation_id] = [];
+    map[row.conversation_id].push({
+      model: row.model,
+      tier_id: row.tier_id,
+      tier_name: row.tier_name,
+    });
+  }
+  return map;
 }
 
 // ---------- Stats ----------

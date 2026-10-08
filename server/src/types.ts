@@ -109,6 +109,7 @@ export interface RequestRecord {
   cache_creation_tokens: number;
   cost: number;
   latency_ms: number;
+  first_token_ms: number | null;
   request_json: string | null;
   response_json: string | null;
   client_ip: string | null;

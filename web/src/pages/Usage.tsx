@@ -27,6 +27,7 @@ import {
 } from "recharts";
 import { api } from "../api";
 import { useCurrency } from "../currency";
+import AutoRefresh from "../components/AutoRefresh";
 import dayjs, { type Dayjs } from "dayjs";
 
 const { RangePicker } = DatePicker;
@@ -227,6 +228,7 @@ export default function Usage() {
           <Button icon={<ReloadOutlined />} onClick={load}>
             刷新
           </Button>
+          <AutoRefresh onRefresh={load} />
         </Space>
       </Card>
 
@@ -412,6 +414,7 @@ export default function Usage() {
                 columns={[
                   { title: "模型", dataIndex: "model", render: (v: string) => <Tag>{v}</Tag> },
                   { title: "请求数", dataIndex: "requests" },
+                  { title: "Token", dataIndex: "tokens", render: (v: number) => v.toLocaleString() },
                   { title: `成本 (${currency})`, dataIndex: "cost", render: (v: number) => formatCost(v) },
                 ]}
               />

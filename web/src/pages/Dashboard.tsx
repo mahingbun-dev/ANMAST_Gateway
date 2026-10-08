@@ -8,6 +8,7 @@ import {
 } from "@ant-design/icons";
 import { api } from "../api";
 import { useCurrency } from "../currency";
+import AutoRefresh from "../components/AutoRefresh";
 import dayjs from "dayjs";
 
 interface Stats {
@@ -42,12 +43,14 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const { currency, symbol, toDisplay, formatCost } = useCurrency();
 
-  useEffect(() => {
+  const load = () => {
+    setLoading(true);
     api
       .get<Stats>("/api/stats")
       .then(setStats)
       .finally(() => setLoading(false));
-  }, []);
+  };
+  useEffect(load, []);
 
   const daily = stats?.daily ?? [];
   const maxRequests = Math.max(1, ...daily.map((d) => d.requests));
@@ -56,6 +59,9 @@ export default function Dashboard() {
 
   return (
     <Space direction="vertical" size={16} style={{ width: "100%" }}>
+      <Space style={{ justifyContent: "flex-end", width: "100%" }}>
+        <AutoRefresh onRefresh={load} />
+      </Space>
       <Row gutter={16}>
         <Col span={6}>
           <Card loading={loading}>

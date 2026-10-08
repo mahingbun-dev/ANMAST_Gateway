@@ -46,6 +46,7 @@ import {
   statsDaily,
   statsByModel,
   statsByKey,
+  conversationModels,
 } from "../db/repos/logs.js";
 import { generateApiKey, hashPassword } from "../lib/crypto.js";
 import { listServerTools, refreshServer } from "../mcp/manager.js";
@@ -55,6 +56,7 @@ import { importSkillFromContent, importSkillFromPath } from "../skills/importer.
 import { openaiJson, fakeOpenAIStream, genId } from "../gateway/respond.js";
 import { toReadable } from "../lib/stream.js";
 import type { ChatMessage } from "../types.js";
+import { getLiveStream } from "../gateway/live.js";
 import {
   usageSummary,
   usageTimeseries,
@@ -84,6 +86,31 @@ function parseUsageFilter(q: Record<string, string>): UsageFilter {
     model: q.model || undefined,
     api_key_id: q.api_key_id || undefined,
   };
+}
+
+/** 计算某条记录的源/出口速度（tokens/秒）。流式中的记录用内存实时数据。 */
+function computeSpeed(r: {
+  id: string;
+  status: string;
+  completion_tokens: number;
+  latency_ms: number;
+  first_token_ms: number | null;
+}): { source_speed: number | null; egress_speed: number | null } {
+  if (r.status === "streaming") {
+    const live = getLiveStream(r.id);
+    if (live?.firstTokenAt) {
+      const dur = (Date.now() - live.firstTokenAt) / 1000;
+      const spd = dur > 0 ? live.tokens / dur : null;
+      return { source_speed: spd, egress_speed: spd };
+    }
+    return { source_speed: null, egress_speed: null };
+  }
+  if (r.first_token_ms != null && r.latency_ms > r.first_token_ms) {
+    const dur = (r.latency_ms - r.first_token_ms) / 1000;
+    const spd = dur > 0 ? r.completion_tokens / dur : null;
+    return { source_speed: spd, egress_speed: spd };
+  }
+  return { source_speed: null, egress_speed: null };
 }
 
 const SETTINGS_DEFAULTS: Record<string, unknown> = {
@@ -531,7 +558,7 @@ export function registerAdminRoutes(app: FastifyInstance): void {
   // ---------- 日志与对话 ----------
   app.get("/api/logs", async (req) => {
     const q = req.query as Record<string, string>;
-    return listRequests({
+    const res = listRequests({
       search: q.search,
       status: q.status,
       protocol: q.protocol,
@@ -544,6 +571,10 @@ export function registerAdminRoutes(app: FastifyInstance): void {
       page: q.page ? Number(q.page) : 1,
       pageSize: q.pageSize ? Number(q.pageSize) : 50,
     });
+    return {
+      ...res,
+      items: res.items.map((r) => ({ ...r, ...computeSpeed(r) })),
+    };
   });
 
   app.get("/api/logs/:id", async (req, reply) => {
@@ -555,11 +586,16 @@ export function registerAdminRoutes(app: FastifyInstance): void {
 
   app.get("/api/conversations", async (req) => {
     const q = req.query as Record<string, string>;
-    return listConversations({
+    const res = listConversations({
       search: q.search,
       page: q.page ? Number(q.page) : 1,
       pageSize: q.pageSize ? Number(q.pageSize) : 50,
     });
+    const modelsMap = conversationModels(res.items.map((c) => c.id));
+    return {
+      ...res,
+      items: res.items.map((c) => ({ ...c, models: modelsMap[c.id] ?? [] })),
+    };
   });
 
   app.get("/api/conversations/:id", async (req, reply) => {

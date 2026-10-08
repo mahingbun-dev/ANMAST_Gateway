@@ -10,6 +10,7 @@ interface Conversation {
   model: string;
   message_count: number;
   updated_at: number;
+  models: { model: string; tier_id: string | null; tier_name: string | null }[];
 }
 interface Message {
   id: number;
@@ -107,7 +108,23 @@ export default function Conversations() {
         pagination={{ current: page, total, pageSize: 50, onChange: (p) => { setPage(p); load(p); } }}
         columns={[
           { title: "标题", dataIndex: "title", ellipsis: true },
-          { title: "模型", dataIndex: "model", render: (v: string) => <Tag>{v || "—"}</Tag> },
+          {
+            title: "使用模型",
+            dataIndex: "models",
+            render: (models: Conversation["models"]) =>
+              models?.length ? (
+                <Space wrap size={4}>
+                  {models.map((m, i) => (
+                    <Tag key={i} color="blue">
+                      {m.model}
+                      {m.tier_name ? ` · ${m.tier_name}` : m.tier_id ? ` · ${m.tier_id}` : ""}
+                    </Tag>
+                  ))}
+                </Space>
+              ) : (
+                "—"
+              ),
+          },
           { title: "消息数", dataIndex: "message_count" },
           {
             title: "更新时间",

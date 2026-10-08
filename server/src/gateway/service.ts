@@ -25,6 +25,7 @@ import {
   type FinalAnswer,
 } from "./respond.js";
 import { logger } from "../logger.js";
+import { startLiveStream, updateLiveStream, finishLiveStream } from "./live.js";
 
 export type GatewayResult =
   | { type: "json"; statusCode: number; headers: Record<string, string>; body: unknown }
@@ -369,6 +370,7 @@ export async function processChat(input: ProcessInput): Promise<GatewayResult> {
     cache_creation_tokens: 0,
     cost: 0,
     latency_ms: 0,
+    first_token_ms: null,
     request_json: safeJson(input.rawBody),
     response_json: null,
     client_ip: clientIp,
@@ -525,6 +527,7 @@ interface PassthroughCtx {
 /** 流式透传：转发上游字节流，同时缓冲文本用于统计 */
 async function* streamPassthrough(ctx: PassthroughCtx): AsyncIterable<string | Uint8Array> {
   let lastErr: Error | undefined;
+  startLiveStream(ctx.requestId, ctx.started);
   for (const cand of ctx.candidates) {
     try {
       const adapter = getAdapter(cand.provider);
@@ -535,10 +538,12 @@ async function* streamPassthrough(ctx: PassthroughCtx): AsyncIterable<string | U
       for await (const chunk of stream) {
         buffered += decoder.decode(chunk, { stream: true });
         yield chunk;
+        updateLiveStream(ctx.requestId, buffered.length);
       }
       buffered += decoder.decode();
       const { usage, content } = adapter.extractStreamUsage(buffered);
       const cost = calcCost(cand.model, usage);
+      const { firstTokenAt } = finishLiveStream(ctx.requestId);
       updateRequest(ctx.requestId, {
         model_used: cand.model.name,
         provider_id: cand.model.provider_id,
@@ -550,6 +555,7 @@ async function* streamPassthrough(ctx: PassthroughCtx): AsyncIterable<string | U
         cache_creation_tokens: usage.cacheCreationTokens,
         cost,
         latency_ms: Date.now() - ctx.started,
+        first_token_ms: firstTokenAt ? firstTokenAt - ctx.started : null,
         response_json: safeJson({ content, usage }),
       });
       const assistant: ChatMessage = { role: "assistant", content: content || null };
@@ -562,6 +568,7 @@ async function* streamPassthrough(ctx: PassthroughCtx): AsyncIterable<string | U
     }
   }
   // 全部失败：输出错误事件
+  finishLiveStream(ctx.requestId);
   updateRequest(ctx.requestId, {
     status: "error",
     error: lastErr?.message ?? "上游调用失败",

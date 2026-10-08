@@ -14,6 +14,7 @@ import { ReloadOutlined } from "@ant-design/icons";
 import { Tooltip } from "antd";
 import { api } from "../api";
 import { useCurrency } from "../currency";
+import AutoRefresh from "../components/AutoRefresh";
 import dayjs from "dayjs";
 
 interface RequestRecord {
@@ -32,6 +33,8 @@ interface RequestRecord {
   cache_creation_tokens: number;
   cost: number;
   latency_ms: number;
+  source_speed: number | null;
+  egress_speed: number | null;
   client_ip: string | null;
   conversation_id: string | null;
   request_json: string | null;
@@ -102,9 +105,10 @@ export default function Logs() {
           value={status}
           onChange={(v) => setStatus(v)}
           options={[
-            { value: "success", label: "成功" },
-            { value: "error", label: "失败" },
-            { value: "streaming", label: "流式中" },
+            { value: "success", label: "success" },
+            { value: "error", label: "error" },
+            { value: "streaming", label: "streaming" },
+            { value: "cancelled", label: "cancelled" },
           ]}
         />
         <Select
@@ -124,6 +128,7 @@ export default function Logs() {
         <Button icon={<ReloadOutlined />} onClick={() => load(page, pageSize)}>
           刷新
         </Button>
+        <AutoRefresh onRefresh={() => load(page, pageSize)} />
       </Space>
 
       <Table
@@ -213,6 +218,21 @@ export default function Logs() {
             title: "耗时",
             dataIndex: "latency_ms",
             render: (v: number) => `${v}ms`,
+          },
+          {
+            title: "速度 (tok/s)",
+            render: (_: unknown, r: RequestRecord) => {
+              const fmt = (v: number | null) => (v == null ? "—" : v.toFixed(1));
+              return (
+                <Space direction="vertical" size={0} style={{ fontSize: 12 }}>
+                  <span>
+                    源 {fmt(r.source_speed)}
+                    {r.status === "streaming" && <Tag color="green" style={{ marginLeft: 4, fontSize: 10 }}>实时</Tag>}
+                  </span>
+                  <span>出 {fmt(r.egress_speed)}</span>
+                </Space>
+              );
+            },
           },
           {
             title: "操作",

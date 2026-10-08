@@ -156,6 +156,7 @@ export function usageByModel(f: UsageFilter): ModelUsage[] {
 export interface KeyModelUsage {
   model: string;
   requests: number;
+  tokens: number;
   cost: number;
 }
 
@@ -201,18 +202,18 @@ export function usageByKey(f: UsageFilter): KeyUsage[] {
   const bWhere = toWhere(bConds.conds);
   const breakdown = getDb()
     .prepare(
-      `SELECT api_key_id, model_used AS model, COUNT(*) AS requests, COALESCE(SUM(cost),0) AS cost
+      `SELECT api_key_id, model_used AS model, COUNT(*) AS requests, COALESCE(SUM(total_tokens),0) AS tokens, COALESCE(SUM(cost),0) AS cost
        FROM requests ${bWhere}
        GROUP BY api_key_id, model_used
        ORDER BY requests DESC`,
     )
-    .all(...bConds.params) as { api_key_id: string | null; model: string; requests: number; cost: number }[];
+    .all(...bConds.params) as { api_key_id: string | null; model: string; requests: number; tokens: number; cost: number }[];
 
   const byKey = new Map<string | null, KeyModelUsage[]>();
   for (const b of breakdown) {
     const k = b.api_key_id ?? null;
     if (!byKey.has(k)) byKey.set(k, []);
-    byKey.get(k)!.push({ model: b.model, requests: b.requests, cost: b.cost });
+    byKey.get(k)!.push({ model: b.model, requests: b.requests, tokens: b.tokens, cost: b.cost });
   }
   return rows.map((r) => ({ ...r, models: byKey.get(r.api_key_id) ?? [] }));
 }

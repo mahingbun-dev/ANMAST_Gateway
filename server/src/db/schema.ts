@@ -155,6 +155,10 @@ export const migrations: string[] = [
   ALTER TABLE api_keys ADD COLUMN skill_ids TEXT NOT NULL DEFAULT '[]';
   ALTER TABLE api_keys ADD COLUMN mcp_server_ids TEXT NOT NULL DEFAULT '[]';
   `,
+  // v4 —— 请求记录：首 token 耗时（用于速度统计）
+  `
+  ALTER TABLE requests ADD COLUMN first_token_ms INTEGER;
+  `,
 ];
 
 export const DEFAULT_TIERS: { id: string; name: string; description: string; sort: number }[] = [
