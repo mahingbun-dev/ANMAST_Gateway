@@ -115,6 +115,8 @@ export default function Models() {
 
   const onModelSelect = async (modelId: string) => {
     const providerId = form.getFieldValue("provider_id");
+    // 显示名同步为所选模型 ID
+    form.setFieldsValue({ display_name: modelId });
     const found = discovered.find((d) => d.id === modelId);
     if (found) {
       // 自动填入上下文窗口与价格（价格按当前币种换算）
