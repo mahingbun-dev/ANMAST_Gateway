@@ -47,6 +47,29 @@ function extractContextWindow(obj: Record<string, unknown>): number | null {
   return null;
 }
 
+// 已知模型上下文窗口（非 AI 确定性映射；用于部分供应商 API 不返回上下文时兜底，两种协议通用）
+const KNOWN_MODEL_CONTEXT: Record<string, number> = {
+  // 小米 MiMo
+  "mimo-v2.6-pro": 1000000,
+  "mimo-v2.6-flash": 1000000,
+  "mimo-v2.6-pro-ultraspeed": 1000000,
+  "mimo-v2.5": 1000000,
+  "mimo-v2.5-pro": 1000000,
+  "mimo-v2.5-asr": 8000,
+  "mimo-v2.5-tts": 8000,
+  "mimo-v2.5-tts-voiceclone": 8000,
+  "mimo-v2.5-tts-voicedesign": 8000,
+  // 智谱 GLM
+  "glm-5.3": 1000000,
+  "glm-5.3-flash": 1000000,
+  "glm-5.3-flashx": 1000000,
+  "glm-5.2": 1000000,
+};
+
+function knownContext(modelId: string): number | null {
+  return KNOWN_MODEL_CONTEXT[modelId] ?? null;
+}
+
 function defaultProtocol(provider: Provider): UpstreamProtocol {
   return provider.type === "anthropic" ? "anthropic" : "openai";
 }
@@ -76,7 +99,8 @@ export async function listProviderModels(
     const obj = item as Record<string, unknown>;
     const id = (obj.id as string) ?? (obj.name as string);
     if (!id) continue;
-    out.push({ id, context_window: extractContextWindow(obj) });
+    const ctx = extractContextWindow(obj) ?? knownContext(id);
+    out.push({ id, context_window: ctx });
   }
   if (out.length === 0) {
     throw new Error("上游未返回任何模型");
@@ -143,26 +167,26 @@ export async function pingProvider(
   }
 }
 
-/** 尽力获取单个模型的上下文窗口（多数供应商需查 /models/{id} 详情） */
-export async function fetchModelContext(
-  provider: Provider,
-  modelName: string,
-  protocol: UpstreamProtocol = defaultProtocol(provider),
-): Promise<number | null> {
-  if (protocol === "anthropic") {
-    // Anthropic 的 models 接口不提供上下文窗口
-    return null;
+/** 尽力获取单个模型的上下文窗口：先查已知映射，再尝试 OpenAI /models/{id} 详情（模型数据两种协议通用） */
+export async function fetchModelContext(provider: Provider, modelName: string): Promise<number | null> {
+  // 1. 已知模型上下文映射（非 AI，确定性）
+  const known = knownContext(modelName);
+  if (known) return known;
+  // 2. OpenAI 详情接口（Anthropic 接口不提供上下文）
+  if (provider.openai_base_url) {
+    try {
+      const url = joinUrl(provider.openai_base_url, `models/${encodeURIComponent(modelName)}`);
+      const res = await fetch(url, { headers: buildHeaders(provider, "openai") });
+      if (res.ok) {
+        const obj = (await res.json()) as Record<string, unknown>;
+        const cw = extractContextWindow(obj);
+        if (cw) return cw;
+      }
+    } catch {
+      /* ignore */
+    }
   }
-  try {
-    const base = protocolBaseUrl(provider, protocol);
-    const url = joinUrl(base, `models/${encodeURIComponent(modelName)}`);
-    const res = await fetch(url, { headers: buildHeaders(provider, protocol) });
-    if (!res.ok) return null;
-    const obj = (await res.json()) as Record<string, unknown>;
-    return extractContextWindow(obj);
-  } catch {
-    return null;
-  }
+  return null;
 }
 
 export { protocolBaseUrl };

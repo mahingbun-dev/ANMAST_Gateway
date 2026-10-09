@@ -341,14 +341,12 @@ export function registerAdminRoutes(app: FastifyInstance): void {
     }
   });
 
-  // 尽力获取单个模型的上下文窗口
+  // 尽力获取单个模型的上下文窗口（模型数据两种协议通用）
   app.get("/api/providers/:id/models/:name/context", async (req, reply) => {
     const p = getProvider((req.params as { id: string }).id);
     if (!p) return reply.code(404).send({ error: "供应商不存在" });
     const name = decodeURIComponent((req.params as { name: string }).name);
-    const q = req.query as { protocol?: string };
-    const proto: UpstreamProtocol = q.protocol === "anthropic" ? "anthropic" : q.protocol === "openai" ? "openai" : p.type === "anthropic" ? "anthropic" : "openai";
-    const context_window = await fetchModelContext(p, name, proto);
+    const context_window = await fetchModelContext(p, name);
     return reply.send({ context_window });
   });
 
