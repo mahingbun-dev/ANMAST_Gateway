@@ -1,10 +1,15 @@
 import type { Provider } from "../types.js";
 import type { UpstreamProtocol } from "./index.js";
 import { joinUrl } from "./http.js";
+import { lookupKnownModel } from "./catalog.js";
 
 export interface DiscoveredModel {
   id: string;
   context_window: number | null;
+  input_price: number | null;
+  cache_read_price: number | null;
+  cache_write_price: number | null;
+  output_price: number | null;
 }
 
 function protocolBaseUrl(provider: Provider, protocol: UpstreamProtocol): string {
@@ -47,27 +52,8 @@ function extractContextWindow(obj: Record<string, unknown>): number | null {
   return null;
 }
 
-// 已知模型上下文窗口（非 AI 确定性映射；用于部分供应商 API 不返回上下文时兜底，两种协议通用）
-const KNOWN_MODEL_CONTEXT: Record<string, number> = {
-  // 小米 MiMo
-  "mimo-v2.6-pro": 1000000,
-  "mimo-v2.6-flash": 1000000,
-  "mimo-v2.6-pro-ultraspeed": 1000000,
-  "mimo-v2.5": 1000000,
-  "mimo-v2.5-pro": 1000000,
-  "mimo-v2.5-asr": 8000,
-  "mimo-v2.5-tts": 8000,
-  "mimo-v2.5-tts-voiceclone": 8000,
-  "mimo-v2.5-tts-voicedesign": 8000,
-  // 智谱 GLM
-  "glm-5.3": 1000000,
-  "glm-5.3-flash": 1000000,
-  "glm-5.3-flashx": 1000000,
-  "glm-5.2": 1000000,
-};
-
 function knownContext(modelId: string): number | null {
-  return KNOWN_MODEL_CONTEXT[modelId] ?? null;
+  return lookupKnownModel(modelId)?.context_window ?? null;
 }
 
 function defaultProtocol(provider: Provider): UpstreamProtocol {
@@ -99,8 +85,16 @@ export async function listProviderModels(
     const obj = item as Record<string, unknown>;
     const id = (obj.id as string) ?? (obj.name as string);
     if (!id) continue;
-    const ctx = extractContextWindow(obj) ?? knownContext(id);
-    out.push({ id, context_window: ctx });
+    const known = lookupKnownModel(id);
+    const ctx = extractContextWindow(obj) ?? known?.context_window ?? null;
+    out.push({
+      id,
+      context_window: ctx,
+      input_price: known?.input_price ?? null,
+      cache_read_price: known?.cache_read_price ?? null,
+      cache_write_price: known?.cache_write_price ?? null,
+      output_price: known?.output_price ?? null,
+    });
   }
   if (out.length === 0) {
     throw new Error("上游未返回任何模型");

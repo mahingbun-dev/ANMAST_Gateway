@@ -48,6 +48,10 @@ interface Model {
 interface DiscoveredModel {
   id: string;
   context_window: number | null;
+  input_price?: number | null;
+  cache_read_price?: number | null;
+  cache_write_price?: number | null;
+  output_price?: number | null;
 }
 
 const ROUTER_ONLY = "__router_only__";
@@ -112,10 +116,18 @@ export default function Models() {
   const onModelSelect = async (modelId: string) => {
     const providerId = form.getFieldValue("provider_id");
     const found = discovered.find((d) => d.id === modelId);
-    if (found?.context_window) {
-      form.setFieldsValue({ context_window: found.context_window });
-      return;
+    if (found) {
+      // 自动填入上下文窗口与价格（价格按当前币种换算）
+      const patch: Record<string, unknown> = {};
+      if (found.context_window) patch.context_window = found.context_window;
+      if (found.input_price != null) patch.input_price = toDisplay(found.input_price);
+      if (found.cache_read_price != null) patch.input_cache_read_price = toDisplay(found.cache_read_price);
+      if (found.cache_write_price != null) patch.input_cache_write_price = toDisplay(found.cache_write_price);
+      if (found.output_price != null) patch.output_price = toDisplay(found.output_price);
+      form.setFieldsValue(patch);
+      if (found.context_window) return;
     }
+    // 列表未携带上下文，尝试拉取详情
     setContextLoading(true);
     try {
       const r = await api.get<{ context_window: number | null }>(
