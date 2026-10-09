@@ -81,7 +81,6 @@ export default function Providers() {
   const [testPassed, setTestPassed] = useState(false);
   const [testResults, setTestResults] = useState<ProtoResult[] | null>(null);
   const [modelList, setModelList] = useState<DiscoveredModel[] | null>(null);
-  const [fetchingModels, setFetchingModels] = useState(false);
   const [fullApiKey, setFullApiKey] = useState("");
   const [form] = Form.useForm();
   const watchedOpenai = Form.useWatch("openai_base_url", form) as string | undefined;
@@ -121,39 +120,46 @@ export default function Providers() {
     return { ...values, api_key: apiKey };
   };
 
-  // 第一步：仅测试各协议连通性（不拉模型列表）
+  // 一个按钮内部拆两步：先逐协议测试连通性，再获取共用模型列表
   const runTest = async () => {
     const values = await getEffectiveValues();
     if (!values) return;
     setTesting(true);
+    setModelList(null);
     try {
+      // 第一步：逐协议测试连通性
       const r = await api.post<TestResult>("/api/providers/test", values);
       setTestResults(r.results);
       setTestPassed(r.ok);
-      setModelList(null);
-      if (r.ok) message.success("所有协议连接成功");
-      else message.error("存在连接失败的协议，请查看详情");
+
+      // 第二步：获取模型列表（任一方法，两种协议共用）
+      let models: DiscoveredModel[] = [];
+      let modelError: string | null = null;
+      try {
+        const m = await api.post<{ models: DiscoveredModel[] }>("/api/providers/models", values);
+        models = m.models ?? [];
+        setModelList(models);
+      } catch (e) {
+        modelError = (e as Error).message;
+        setModelList(null);
+      }
+
+      if (r.ok) {
+        message.success(
+          models.length
+            ? `连接成功，获取到 ${models.length} 个模型`
+            : modelError
+              ? `连接成功（模型列表获取失败：${modelError}）`
+              : "连接成功",
+        );
+      } else {
+        message.error("存在连接失败的协议，请查看详情");
+      }
     } catch (e) {
       resetTest();
       message.error((e as Error).message);
     } finally {
       setTesting(false);
-    }
-  };
-
-  // 第二步：获取模型列表（任一方法，两种协议共用）
-  const fetchModels = async () => {
-    const values = await getEffectiveValues();
-    if (!values) return;
-    setFetchingModels(true);
-    try {
-      const r = await api.post<{ models: DiscoveredModel[] }>("/api/providers/models", values);
-      setModelList(r.models);
-      message.success(`获取到 ${r.models.length} 个模型`);
-    } catch (e) {
-      message.error((e as Error).message);
-    } finally {
-      setFetchingModels(false);
     }
   };
 
@@ -398,14 +404,9 @@ export default function Providers() {
           </Form.Item>
 
           <Space direction="vertical" style={{ width: "100%" }}>
-            <Space style={{ width: "100%" }}>
-              <Button icon={<ApiOutlined />} loading={testing} onClick={runTest} block>
-                1. 测试连接
-              </Button>
-              <Button loading={fetchingModels} onClick={fetchModels} block>
-                2. 获取模型列表
-              </Button>
-            </Space>
+            <Button icon={<ApiOutlined />} loading={testing} onClick={runTest} block>
+              测试连接
+            </Button>
             {testResults && (
               <Space direction="vertical" style={{ width: "100%" }}>
                 {testResults.map((x) => (
