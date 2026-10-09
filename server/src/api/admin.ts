@@ -53,7 +53,7 @@ import {
 } from "../db/repos/logs.js";
 import { generateApiKey, hashPassword } from "../lib/crypto.js";
 import { listServerTools, refreshServer } from "../mcp/manager.js";
-import { listProviderModels, fetchModelContext } from "../providers/discovery.js";
+import { listProviderModels, fetchModelContext, pingProvider } from "../providers/discovery.js";
 import type { UpstreamProtocol } from "../providers/index.js";
 import { handleAssistantChat, assistantChatStream } from "../assistant/service.js";
 import { importSkillFromContent, importSkillFromPath } from "../skills/importer.js";
@@ -266,9 +266,27 @@ export function registerAdminRoutes(app: FastifyInstance): void {
     for (const proto of protocols) {
       try {
         const models = await listProviderModels(p, proto);
-        results.push({ protocol: proto, ok: true, models, error: null });
+        results.push({ protocol: proto, ok: true, models, error: null, note: null });
       } catch (e) {
-        results.push({ protocol: proto, ok: false, models: [], error: (e as Error).message });
+        // /models 列表失败（常见于 Anthropic 端点未实现 /v1/models）→ 用最小请求验证连通性
+        const ping = await pingProvider(p, proto);
+        if (ping.ok) {
+          results.push({
+            protocol: proto,
+            ok: true,
+            models: [],
+            error: null,
+            note: "已连通（该端点未实现模型列表接口，请手动填写模型名）",
+          });
+        } else {
+          results.push({
+            protocol: proto,
+            ok: false,
+            models: [],
+            error: `${(e as Error).message}；${ping.error ?? "连通性验证失败"}`,
+            note: null,
+          });
+        }
       }
     }
     return { results, allOk: results.length > 0 && results.every((r) => r.ok) };

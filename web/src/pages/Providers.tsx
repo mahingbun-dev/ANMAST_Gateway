@@ -34,6 +34,7 @@ interface ProtoResult {
   ok: boolean;
   models: { id: string; context_window: number | null }[];
   error: string | null;
+  note?: string | null;
 }
 interface TestResult {
   ok: boolean;
@@ -363,7 +364,7 @@ export default function Providers() {
                     icon={x.ok ? <CheckCircleOutlined /> : undefined}
                     message={
                       x.ok
-                        ? `${x.protocol === "openai" ? "OpenAI 兼容" : "Anthropic 兼容"} ✓ 发现 ${x.models.length} 个模型`
+                        ? `${x.protocol === "openai" ? "OpenAI 兼容" : "Anthropic 兼容"} ✓ ${x.models.length ? `发现 ${x.models.length} 个模型` : x.note ?? "已连通"}`
                         : `${x.protocol === "openai" ? "OpenAI 兼容" : "Anthropic 兼容"} ✗ ${x.error ?? "测试失败"}`
                     }
                   />

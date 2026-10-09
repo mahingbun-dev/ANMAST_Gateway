@@ -84,6 +84,44 @@ export async function listProviderModels(
   return out;
 }
 
+/** 最小请求验证连通性：401/403 视为鉴权失败，其余状态（含 400/404）视为「端点可达、鉴权通过」 */
+export async function pingProvider(
+  provider: Provider,
+  protocol: UpstreamProtocol,
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const base = protocolBaseUrl(provider, protocol);
+    if (protocol === "anthropic") {
+      const url = joinUrl(base, "v1/messages");
+      const res = await fetch(url, {
+        method: "POST",
+        headers: buildHeaders(provider, protocol),
+        body: JSON.stringify({
+          model: "ping",
+          max_tokens: 1,
+          messages: [{ role: "user", content: "ping" }],
+        }),
+      });
+      const status = res.status;
+      await res.text().catch(() => {});
+      if (status === 401 || status === 403) return { ok: false, error: `鉴权失败 (HTTP ${status})` };
+      return { ok: true };
+    }
+    const url = joinUrl(base, "chat/completions");
+    const res = await fetch(url, {
+      method: "POST",
+      headers: buildHeaders(provider, protocol),
+      body: JSON.stringify({ model: "ping", messages: [{ role: "user", content: "ping" }] }),
+    });
+    const status = res.status;
+    await res.text().catch(() => {});
+    if (status === 401 || status === 403) return { ok: false, error: `鉴权失败 (HTTP ${status})` };
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
+  }
+}
+
 /** 尽力获取单个模型的上下文窗口（多数供应商需查 /models/{id} 详情） */
 export async function fetchModelContext(
   provider: Provider,
