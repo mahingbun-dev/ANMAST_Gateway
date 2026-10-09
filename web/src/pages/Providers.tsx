@@ -32,6 +32,28 @@ interface TestResult {
   models: { id: string; context_window: number | null }[];
 }
 
+// 已知同时提供 OpenAI / Anthropic 双协议端点的供应商（非 AI 确定性映射，用于自动推导另一种协议的 Base URL）
+interface KnownProvider {
+  name: string;
+  openai: string;
+  anthropic: string;
+}
+const KNOWN_PROVIDERS: KnownProvider[] = [
+  { name: "智谱 GLM", openai: "https://open.bigmodel.cn/api/paas/v4", anthropic: "https://open.bigmodel.cn/api/anthropic" },
+  { name: "DeepSeek", openai: "https://api.deepseek.com/v1", anthropic: "https://api.deepseek.com/anthropic" },
+  { name: "Moonshot (Kimi)", openai: "https://api.moonshot.cn/v1", anthropic: "https://api.moonshot.cn/anthropic" },
+  { name: "MiniMax", openai: "https://api.minimaxi.com/v1", anthropic: "https://api.minimaxi.com/anthropic" },
+];
+
+function matchKnown(baseUrl: string): KnownProvider | undefined {
+  try {
+    const host = new URL(baseUrl).hostname;
+    return KNOWN_PROVIDERS.find((p) => new URL(p.openai).hostname === host);
+  } catch {
+    return undefined;
+  }
+}
+
 export default function Providers() {
   const [data, setData] = useState<Provider[]>([]);
   const [loading, setLoading] = useState(false);
@@ -42,6 +64,10 @@ export default function Providers() {
   const [modelCount, setModelCount] = useState<number | null>(null);
   const [fullApiKey, setFullApiKey] = useState("");
   const [form] = Form.useForm();
+  const watchedType = Form.useWatch("type", form) as "openai" | "anthropic" | undefined;
+  const watchedBase = Form.useWatch("base_url", form) as string | undefined;
+  const known = watchedBase ? matchKnown(String(watchedBase)) : undefined;
+  const alternate = known ? (watchedType === "anthropic" ? known.openai : known.anthropic) : undefined;
 
   const load = () => {
     setLoading(true);
@@ -209,6 +235,23 @@ export default function Providers() {
         okText={testPassed ? "保存" : "测试通过后可保存"}
       >
         <Form form={form} layout="vertical" onValuesChange={resetTest}>
+          <Form.Item label="已知供应商（可选快速填充）">
+            <Select
+              allowClear
+              placeholder="选择后自动填充名称与 Base URL"
+              options={KNOWN_PROVIDERS.map((p) => ({ value: p.name, label: p.name }))}
+              onChange={(name) => {
+                const p = KNOWN_PROVIDERS.find((x) => x.name === name);
+                if (p) {
+                  const curType = form.getFieldValue("type") || "openai";
+                  form.setFieldsValue({
+                    name: p.name,
+                    base_url: curType === "anthropic" ? p.anthropic : p.openai,
+                  });
+                }
+              }}
+            />
+          </Form.Item>
           <Form.Item name="name" label="名称" rules={[{ required: true }]}>
             <Input placeholder="如 OpenAI / DeepSeek / 本地 Ollama" />
           </Form.Item>
@@ -216,7 +259,7 @@ export default function Providers() {
             <Select
               options={[
                 { value: "openai", label: "OpenAI 兼容" },
-                { value: "anthropic", label: "Anthropic" },
+                { value: "anthropic", label: "Anthropic 兼容" },
               ]}
             />
           </Form.Item>
@@ -228,6 +271,32 @@ export default function Providers() {
           >
             <Input placeholder="https://api.openai.com/v1" />
           </Form.Item>
+          {known && alternate && (
+            <Alert
+              type="info"
+              showIcon
+              style={{ marginBottom: 16 }}
+              message={`检测到「${known.name}」，其 ${watchedType === "anthropic" ? "OpenAI" : "Anthropic"} 兼容端点为`}
+              description={
+                <Space direction="vertical" size={8}>
+                  <Typography.Text code copyable>
+                    {alternate}
+                  </Typography.Text>
+                  <Button
+                    size="small"
+                    onClick={() => {
+                      form.setFieldsValue({
+                        base_url: alternate,
+                        type: watchedType === "anthropic" ? "openai" : "anthropic",
+                      });
+                    }}
+                  >
+                    填充此端点（切换协议类型）
+                  </Button>
+                </Space>
+              }
+            />
+          )}
           <Form.Item name="api_key" label="API Key" extra={editing ? "留空则保持已保存的密钥" : undefined}>
             <Input.Password placeholder={editing ? "留空则保持原密钥" : "sk-..."} />
           </Form.Item>

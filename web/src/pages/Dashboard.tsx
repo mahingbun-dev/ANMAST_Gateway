@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Card, Col, Row, Statistic, Table, Typography, Space, Tag, Empty } from "antd";
+import { Card, Col, Row, Statistic, Table, Typography, Space, Tag, Empty, Segmented } from "antd";
 import {
   FileTextOutlined,
   ThunderboltOutlined,
@@ -43,6 +43,7 @@ interface Stats {
 export default function Dashboard() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
+  const [trendMetric, setTrendMetric] = useState<"requests" | "tokens" | "cost">("requests");
   const { currency, symbol, toDisplay, formatCost } = useCurrency();
   const { tick } = useRefresh();
 
@@ -66,7 +67,6 @@ export default function Dashboard() {
   }, [tick]);
 
   const daily = stats?.daily ?? [];
-  const maxRequests = Math.max(1, ...daily.map((d) => d.requests));
   const t = stats?.totals;
   const uncachedInput = t ? Math.max(0, t.prompt_tokens - t.cache_read_tokens - t.cache_creation_tokens) : 0;
   // 近 30 天补齐（无数据的天按 0 排版）
@@ -79,6 +79,7 @@ export default function Dashboard() {
       requests: d?.requests ?? 0,
       tokens: d?.tokens ?? 0,
       cost: d?.cost ?? 0,
+      costDisplay: toDisplay(d?.cost ?? 0),
     };
   });
 
@@ -135,20 +136,40 @@ export default function Dashboard() {
         </Row>
       </Card>
 
-      <Card title="近 30 天调用趋势" loading={loading}>
+      <Card
+        title="近 30 天调用趋势"
+        loading={loading}
+        extra={
+          <Segmented
+            size="small"
+            value={trendMetric}
+            onChange={(v) => setTrendMetric(v as "requests" | "tokens" | "cost")}
+            options={[
+              { label: "调用次数", value: "requests" },
+              { label: "Token", value: "tokens" },
+              { label: `成本 (${currency})`, value: "cost" },
+            ]}
+          />
+        }
+      >
         <ResponsiveContainer width="100%" height={220}>
           <BarChart data={last30} margin={{ top: 8, right: 16, bottom: 8, left: 8 }}>
             <CartesianGrid strokeDasharray="3 3" />
             <XAxis dataKey="day" tick={{ fontSize: 11 }} interval={4} />
-            <YAxis tick={{ fontSize: 11 }} width={50} />
+            <YAxis tick={{ fontSize: 11 }} width={56} />
             <RTooltip
-              formatter={(value: number, name: string) => [
-                name === "requests" ? `${value} 次` : `${value.toLocaleString()}`,
-                name === "requests" ? "调用次数" : name === "tokens" ? "Token" : "成本",
-              ]}
+              formatter={(value: number, name: string) => {
+                if (trendMetric === "requests") return [`${value} 次`, "调用次数"];
+                if (trendMetric === "tokens") return [`${value.toLocaleString()}`, "Token"];
+                return [`${formatCost(value)} ${currency}`, "成本"];
+              }}
               labelFormatter={(label) => `${dayjs().year()}-${label}`}
             />
-            <Bar dataKey="requests" name="调用次数" fill="#2563eb" />
+            <Bar
+              dataKey={trendMetric === "cost" ? "costDisplay" : trendMetric}
+              fill="#2563eb"
+              name={trendMetric === "requests" ? "调用次数" : trendMetric === "tokens" ? "Token" : "成本"}
+            />
           </BarChart>
         </ResponsiveContainer>
       </Card>
