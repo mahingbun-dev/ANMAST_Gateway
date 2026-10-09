@@ -8,6 +8,7 @@ import { logger, setLogLevel } from "./logger.js";
 import { initDb } from "./db/index.js";
 import { registerOpenAIRoutes } from "./api/openai.js";
 import { registerAnthropicRoutes } from "./api/anthropic.js";
+import { registerUnifiedRoute } from "./api/unified.js";
 import { registerAdminRoutes } from "./api/admin.js";
 import { closeAll } from "./mcp/manager.js";
 import { cleanupExpiredSessions } from "./db/repos/auth.js";
@@ -46,6 +47,7 @@ async function main(): Promise<void> {
   // API 路由
   registerOpenAIRoutes(app);
   registerAnthropicRoutes(app);
+  registerUnifiedRoute(app);
   registerAdminRoutes(app);
 
   // 健康检查

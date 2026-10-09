@@ -82,7 +82,7 @@ function buildBody(req: NormalizedRequest): Record<string, unknown> {
 export const anthropicAdapter: ProviderAdapter = {
   async chat(req: NormalizedRequest): Promise<ChatResult> {
     const provider = req.extra?.__provider as Provider;
-    const url = joinUrl(provider.base_url, "v1/messages");
+    const url = joinUrl(provider.anthropic_base_url ?? provider.base_url, "v1/messages");
     const headers = buildHeaders(provider, provider.api_key);
     headers.set("x-api-key", provider.api_key);
     headers.set("anthropic-version", "2023-06-01");
@@ -137,7 +137,7 @@ export const anthropicAdapter: ProviderAdapter = {
 
   async stream(req: NormalizedRequest): Promise<AsyncIterable<Uint8Array>> {
     const provider = req.extra?.__provider as Provider;
-    const url = joinUrl(provider.base_url, "v1/messages");
+    const url = joinUrl(provider.anthropic_base_url ?? provider.base_url, "v1/messages");
     const headers = buildHeaders(provider, provider.api_key);
     headers.set("x-api-key", provider.api_key);
     headers.set("anthropic-version", "2023-06-01");

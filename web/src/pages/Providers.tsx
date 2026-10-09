@@ -22,33 +22,48 @@ interface Provider {
   name: string;
   type: "openai" | "anthropic";
   base_url: string;
+  openai_base_url: string | null;
+  anthropic_base_url: string | null;
   api_key: string;
   extra_headers: string;
   enabled: number;
 }
 
-interface TestResult {
+interface ProtoResult {
+  protocol: "openai" | "anthropic";
   ok: boolean;
   models: { id: string; context_window: number | null }[];
+  error: string | null;
+}
+interface TestResult {
+  ok: boolean;
+  results: ProtoResult[];
 }
 
-// 已知同时提供 OpenAI / Anthropic 双协议端点的供应商（非 AI 确定性映射，用于自动推导另一种协议的 Base URL）
+// 已知供应商双协议端点映射（非 AI 确定性映射；空字符串表示该供应商不支持该协议）
 interface KnownProvider {
   name: string;
   openai: string;
   anthropic: string;
 }
 const KNOWN_PROVIDERS: KnownProvider[] = [
+  { name: "小米 MiMo API（按量付费）", openai: "https://api.xiaomimimo.com/v1", anthropic: "https://api.xiaomimimo.com/anthropic" },
+  { name: "小米 MiMo Token Plan（订阅套餐）", openai: "https://token-plan-cn.xiaomimimo.com/v1", anthropic: "https://token-plan-cn.xiaomimimo.com/anthropic" },
   { name: "智谱 GLM", openai: "https://open.bigmodel.cn/api/paas/v4", anthropic: "https://open.bigmodel.cn/api/anthropic" },
   { name: "DeepSeek", openai: "https://api.deepseek.com/v1", anthropic: "https://api.deepseek.com/anthropic" },
   { name: "Moonshot (Kimi)", openai: "https://api.moonshot.cn/v1", anthropic: "https://api.moonshot.cn/anthropic" },
   { name: "MiniMax", openai: "https://api.minimaxi.com/v1", anthropic: "https://api.minimaxi.com/anthropic" },
+  { name: "OpenAI（仅 OpenAI 协议）", openai: "https://api.openai.com/v1", anthropic: "" },
+  { name: "Anthropic（仅 Anthropic 协议）", openai: "", anthropic: "https://api.anthropic.com" },
 ];
 
 function matchKnown(baseUrl: string): KnownProvider | undefined {
   try {
     const host = new URL(baseUrl).hostname;
-    return KNOWN_PROVIDERS.find((p) => new URL(p.openai).hostname === host);
+    return KNOWN_PROVIDERS.find((p) => {
+      const hosts = [p.openai, p.anthropic].filter(Boolean).map((u) => new URL(u).hostname);
+      return hosts.includes(host);
+    });
   } catch {
     return undefined;
   }
@@ -61,13 +76,18 @@ export default function Providers() {
   const [editing, setEditing] = useState<Provider | null>(null);
   const [testing, setTesting] = useState(false);
   const [testPassed, setTestPassed] = useState(false);
-  const [modelCount, setModelCount] = useState<number | null>(null);
+  const [testResults, setTestResults] = useState<ProtoResult[] | null>(null);
   const [fullApiKey, setFullApiKey] = useState("");
   const [form] = Form.useForm();
-  const watchedType = Form.useWatch("type", form) as "openai" | "anthropic" | undefined;
-  const watchedBase = Form.useWatch("base_url", form) as string | undefined;
-  const known = watchedBase ? matchKnown(String(watchedBase)) : undefined;
-  const alternate = known ? (watchedType === "anthropic" ? known.openai : known.anthropic) : undefined;
+  const watchedOpenai = Form.useWatch("openai_base_url", form) as string | undefined;
+  const watchedAnthropic = Form.useWatch("anthropic_base_url", form) as string | undefined;
+
+  // 从任意一个已填写的 Base URL 检测已知供应商，用于补全另一协议
+  const knownFromOpenai = watchedOpenai ? matchKnown(String(watchedOpenai)) : undefined;
+  const knownFromAnthropic = watchedAnthropic ? matchKnown(String(watchedAnthropic)) : undefined;
+  const known = knownFromOpenai ?? knownFromAnthropic;
+  const missingOpenai = known && !watchedOpenai && known.openai;
+  const missingAnthropic = known && !watchedAnthropic && known.anthropic;
 
   const load = () => {
     setLoading(true);
@@ -77,40 +97,48 @@ export default function Providers() {
 
   const resetTest = () => {
     setTestPassed(false);
-    setModelCount(null);
+    setTestResults(null);
   };
 
   const openCreate = () => {
     setEditing(null);
     setFullApiKey("");
     form.resetFields();
-    form.setFieldsValue({ type: "openai", enabled: true, extra_headers: "{}" });
+    form.setFieldsValue({ enabled: true, extra_headers: "{}" });
     resetTest();
     setOpen(true);
   };
   const openEdit = (p: Provider) => {
     setEditing(p);
-    form.setFieldsValue({ ...p, enabled: !!p.enabled, api_key: "" });
+    form.setFieldsValue({
+      ...p,
+      enabled: !!p.enabled,
+      api_key: "",
+    });
     resetTest();
     setOpen(true);
-    // 拉取完整密钥用于「留空则保持原密钥」的测试与保存
     api.get<Provider>(`/api/providers/${p.id}`).then((full) => setFullApiKey(full.api_key)).catch(() => setFullApiKey(""));
   };
 
   const runTest = async () => {
     let values: Record<string, unknown>;
     try {
-      values = await form.validateFields(["name", "type", "base_url", "api_key", "extra_headers"]);
+      values = await form.validateFields(["name", "openai_base_url", "anthropic_base_url", "api_key", "extra_headers"]);
     } catch {
+      return;
+    }
+    if (!String(values.openai_base_url ?? "").trim() && !String(values.anthropic_base_url ?? "").trim()) {
+      message.warning("请至少填写一种协议的 Base URL");
       return;
     }
     const apiKey = String(values.api_key ?? "").trim() || fullApiKey;
     setTesting(true);
     try {
       const r = await api.post<TestResult>("/api/providers/test", { ...values, api_key: apiKey });
-      setTestPassed(true);
-      setModelCount(r.models?.length ?? 0);
-      message.success(`连接成功，发现 ${r.models?.length ?? 0} 个模型`);
+      setTestResults(r.results);
+      setTestPassed(r.ok);
+      if (r.ok) message.success("所有协议均测试通过");
+      else message.error("存在未通过的协议，请查看详情");
     } catch (e) {
       resetTest();
       message.error((e as Error).message);
@@ -121,12 +149,19 @@ export default function Providers() {
 
   const submit = async () => {
     if (!testPassed) {
-      message.warning("请先点击「测试连接」并通过后再保存");
+      message.warning("请先点击「测试连接」并全部通过后再保存");
       return;
     }
     const values = await form.validateFields();
     const apiKey = String(values.api_key ?? "").trim();
-    const body = { ...values, api_key: apiKey || fullApiKey };
+    const body = {
+      name: values.name,
+      openai_base_url: String(values.openai_base_url ?? "").trim() || null,
+      anthropic_base_url: String(values.anthropic_base_url ?? "").trim() || null,
+      api_key: apiKey || fullApiKey,
+      extra_headers: values.extra_headers,
+      enabled: values.enabled,
+    };
     try {
       if (editing) await api.put(`/api/providers/${editing.id}`, body);
       else await api.post("/api/providers", body);
@@ -142,26 +177,32 @@ export default function Providers() {
     message.loading({ content: "测试连接中…", key: "test" });
     try {
       const r = await api.post<TestResult>(`/api/providers/${id}/test`);
-      message.success({ content: `连接成功，发现 ${r.models.length} 个模型`, key: "test" });
+      const ok = r.results.filter((x) => x.ok).length;
+      message.success({ content: `测试完成：${ok}/${r.results.length} 个协议通过`, key: "test" });
       Modal.info({
-        title: "上游可用模型",
+        title: "测试结果",
         content: (
-          <div style={{ maxHeight: 300, overflow: "auto" }}>
-            {r.models.map((m) => (
-              <div key={m.id}>
-                <Tag>{m.id}</Tag>
-                {m.context_window && (
-                  <Typography.Text type="secondary">上下文 {m.context_window.toLocaleString()}</Typography.Text>
-                )}
+          <Space direction="vertical" style={{ width: "100%" }}>
+            {r.results.map((x) => (
+              <div key={x.protocol}>
+                <Tag color={x.ok ? "green" : "red"}>{x.protocol === "openai" ? "OpenAI 兼容" : "Anthropic 兼容"}</Tag>
+                {x.ok ? `发现 ${x.models.length} 个模型` : x.error}
               </div>
             ))}
-          </div>
+          </Space>
         ),
       });
     } catch (e) {
       message.error({ content: (e as Error).message, key: "test" });
     }
   };
+
+  const protoTags = (p: Provider) => (
+    <Space size={4}>
+      {p.openai_base_url && <Tag color="blue">OpenAI 兼容</Tag>}
+      {p.anthropic_base_url && <Tag color="orange">Anthropic 兼容</Tag>}
+    </Space>
+  );
 
   return (
     <div>
@@ -185,12 +226,8 @@ export default function Providers() {
         dataSource={data}
         columns={[
           { title: "名称", dataIndex: "name" },
-          {
-            title: "类型",
-            dataIndex: "type",
-            render: (v: string) => <Tag color={v === "anthropic" ? "orange" : "blue"}>{v}</Tag>,
-          },
-          { title: "Base URL", dataIndex: "base_url", ellipsis: true },
+          { title: "协议", render: (_, r: Provider) => protoTags(r) },
+          { title: "Base URL", render: (_, r: Provider) => r.openai_base_url ?? r.anthropic_base_url ?? r.base_url, ellipsis: true },
           { title: "API Key", dataIndex: "api_key", render: (v: string) => v || "—" },
           {
             title: "状态",
@@ -238,60 +275,65 @@ export default function Providers() {
           <Form.Item label="已知供应商（可选快速填充）">
             <Select
               allowClear
-              placeholder="选择后自动填充名称与 Base URL"
+              placeholder="选择后自动填充名称与两种协议的 Base URL"
               options={KNOWN_PROVIDERS.map((p) => ({ value: p.name, label: p.name }))}
               onChange={(name) => {
                 const p = KNOWN_PROVIDERS.find((x) => x.name === name);
                 if (p) {
-                  const curType = form.getFieldValue("type") || "openai";
                   form.setFieldsValue({
-                    name: p.name,
-                    base_url: curType === "anthropic" ? p.anthropic : p.openai,
+                    name: p.name.replace(/（.*）/, ""),
+                    openai_base_url: p.openai || undefined,
+                    anthropic_base_url: p.anthropic || undefined,
                   });
                 }
               }}
             />
           </Form.Item>
           <Form.Item name="name" label="名称" rules={[{ required: true }]}>
-            <Input placeholder="如 OpenAI / DeepSeek / 本地 Ollama" />
-          </Form.Item>
-          <Form.Item name="type" label="协议类型" rules={[{ required: true }]}>
-            <Select
-              options={[
-                { value: "openai", label: "OpenAI 兼容" },
-                { value: "anthropic", label: "Anthropic 兼容" },
-              ]}
-            />
+            <Input placeholder="如 OpenAI / DeepSeek / 小米 MiMo" />
           </Form.Item>
           <Form.Item
-            name="base_url"
-            label="Base URL"
-            rules={[{ required: true }]}
-            extra="OpenAI 兼容填如 https://api.openai.com/v1；Anthropic 填如 https://api.anthropic.com"
+            name="openai_base_url"
+            label="OpenAI 兼容 Base URL"
+            extra="留空表示不支持 OpenAI 协议"
           >
-            <Input placeholder="https://api.openai.com/v1" />
+            <Input placeholder="https://api.example.com/v1" />
           </Form.Item>
-          {known && alternate && (
+          <Form.Item
+            name="anthropic_base_url"
+            label="Anthropic 兼容 Base URL"
+            extra="留空表示不支持 Anthropic 协议"
+          >
+            <Input placeholder="https://api.example.com/anthropic" />
+          </Form.Item>
+          {known && (missingOpenai || missingAnthropic) && (
             <Alert
               type="info"
               showIcon
               style={{ marginBottom: 16 }}
-              message={`检测到「${known.name}」，其 ${watchedType === "anthropic" ? "OpenAI" : "Anthropic"} 兼容端点为`}
+              message={`检测到「${known.name}」，可补全另一协议端点`}
               description={
                 <Space direction="vertical" size={8}>
-                  <Typography.Text code copyable>
-                    {alternate}
-                  </Typography.Text>
+                  {missingOpenai && (
+                    <Typography.Text code copyable>
+                      OpenAI: {known.openai}
+                    </Typography.Text>
+                  )}
+                  {missingAnthropic && (
+                    <Typography.Text code copyable>
+                      Anthropic: {known.anthropic}
+                    </Typography.Text>
+                  )}
                   <Button
                     size="small"
-                    onClick={() => {
+                    onClick={() =>
                       form.setFieldsValue({
-                        base_url: alternate,
-                        type: watchedType === "anthropic" ? "openai" : "anthropic",
-                      });
-                    }}
+                        openai_base_url: known.openai || undefined,
+                        anthropic_base_url: known.anthropic || undefined,
+                      })
+                    }
                   >
-                    填充此端点（切换协议类型）
+                    一键补全
                   </Button>
                 </Space>
               }
@@ -311,13 +353,22 @@ export default function Providers() {
             <Button icon={<ApiOutlined />} loading={testing} onClick={runTest} block>
               测试连接
             </Button>
-            {testPassed && (
-              <Alert
-                type="success"
-                showIcon
-                icon={<CheckCircleOutlined />}
-                message={`测试通过，发现 ${modelCount ?? 0} 个可用模型`}
-              />
+            {testResults && (
+              <Space direction="vertical" style={{ width: "100%" }}>
+                {testResults.map((x) => (
+                  <Alert
+                    key={x.protocol}
+                    type={x.ok ? "success" : "error"}
+                    showIcon
+                    icon={x.ok ? <CheckCircleOutlined /> : undefined}
+                    message={
+                      x.ok
+                        ? `${x.protocol === "openai" ? "OpenAI 兼容" : "Anthropic 兼容"} ✓ 发现 ${x.models.length} 个模型`
+                        : `${x.protocol === "openai" ? "OpenAI 兼容" : "Anthropic 兼容"} ✗ ${x.error ?? "测试失败"}`
+                    }
+                  />
+                ))}
+              </Space>
             )}
           </Space>
         </Form>

@@ -163,6 +163,13 @@ export const migrations: string[] = [
   `
   ALTER TABLE models ADD COLUMN usage TEXT NOT NULL DEFAULT 'normal';
   `,
+  // v6 —— 供应商双协议：openai_base_url / anthropic_base_url（可空，留空表示不支持该协议）
+  `
+  ALTER TABLE providers ADD COLUMN openai_base_url TEXT;
+  ALTER TABLE providers ADD COLUMN anthropic_base_url TEXT;
+  UPDATE providers SET openai_base_url = base_url WHERE type = 'openai';
+  UPDATE providers SET anthropic_base_url = base_url WHERE type = 'anthropic';
+  `,
 ];
 
 export const DEFAULT_TIERS: { id: string; name: string; description: string; sort: number }[] = [

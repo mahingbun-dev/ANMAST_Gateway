@@ -1,6 +1,6 @@
 import type { Provider, ModelConfig, ChatMessage, ToolDefinition, ToolCall, Skill } from "../types.js";
 import type { Usage, NormalizedRequest } from "../providers/types.js";
-import { getAdapter } from "../providers/index.js";
+import { getAdapterForProtocol, getUpstreamProtocol } from "../providers/index.js";
 import { resolveModel, autoDetectComplexity, type ModelWithProvider } from "../routing/index.js";
 import { resolveActiveSkills, buildSkillSystemPrompt, getSkillToolNames } from "../skills/manager.js";
 import { listAllTools, listToolsFromServers, findToolOwner, callToolOnServer } from "../mcp/manager.js";
@@ -142,7 +142,7 @@ async function runOnce(
   tools: ToolDefinition[],
   skillPrompt: string,
 ): Promise<RunResult> {
-  const adapter = getAdapter(cand.provider);
+  const adapter = getAdapterForProtocol(getUpstreamProtocol(cand.provider, parsed.protocol));
   const req = buildRequest(cand, parsed, tools, skillPrompt, false);
   const res = await adapter.chat(req);
   return {
@@ -163,7 +163,7 @@ async function runAgentLoop(
   gatewayToolNames: Set<string>,
   skillPrompt: string,
 ): Promise<RunResult> {
-  const adapter = getAdapter(cand.provider);
+  const adapter = getAdapterForProtocol(getUpstreamProtocol(cand.provider, parsed.protocol));
   const maxSteps = getSetting<number>("max_tool_steps", 8) ?? 8;
   const messages: ChatMessage[] = [...parsed.messages];
   const toolMessages: ChatMessage[] = [];
@@ -393,9 +393,10 @@ export async function processChat(input: ProcessInput): Promise<GatewayResult> {
       return finalizeSuccess(run);
     }
     if (parsed.stream) {
-      // 仅当客户端协议与上游供应商协议一致时才透传原始流，否则内部非流式调用后按客户端协议重放
-      const streamCompat = protocol === "openai" ? "openai" : "anthropic";
-      const canPassthrough = target.candidates.every((c) => c.provider.type === streamCompat);
+      // 仅当所有候选的上游协议都与客户端协议一致时才透传原始流，否则内部非流式调用后按客户端协议重放
+      const canPassthrough = target.candidates.every(
+        (c) => getUpstreamProtocol(c.provider, protocol) === protocol,
+      );
       if (canPassthrough) {
         return {
           type: "stream",
@@ -547,7 +548,7 @@ async function* streamPassthrough(ctx: PassthroughCtx): AsyncIterable<string | U
   startLiveStream(ctx.requestId, ctx.started);
   for (const cand of ctx.candidates) {
     try {
-      const adapter = getAdapter(cand.provider);
+      const adapter = getAdapterForProtocol(getUpstreamProtocol(cand.provider, ctx.protocol));
       const req = buildRequest(cand, ctx.parsed, ctx.allTools, ctx.skillPrompt, true);
       const stream = await adapter.stream(req);
       const decoder = new TextDecoder();

@@ -236,11 +236,16 @@ export default function Settings() {
           message="远程电脑 / 第三方平台通过网关调用模型"
           description={
             <Typography.Paragraph style={{ marginBottom: 0 }}>
-              网关提供 OpenAI 兼容与 Anthropic 兼容两种端点，使用「API 密钥」页创建的密钥认证（Bearer 或 x-api-key）。
+              网关提供 OpenAI 兼容、Anthropic 兼容，以及一个「自动判断协议」的统一入口，使用「API 密钥」页创建的密钥认证（Bearer 或 x-api-key）。
             </Typography.Paragraph>
           }
         />
         <Descriptions column={1} style={{ marginTop: 16 }}>
+          <Descriptions.Item label="统一入口（自动判断协议）">
+            <Typography.Text code copyable>
+              {base}/v1/chat
+            </Typography.Text>
+          </Descriptions.Item>
           <Descriptions.Item label="OpenAI 兼容">
             <Typography.Text code copyable>
               {base}/v1/chat/completions
@@ -262,6 +267,27 @@ export default function Settings() {
             <Typography.Text code>x-api-key: sk-anmast-xxx</Typography.Text>
           </Descriptions.Item>
         </Descriptions>
+
+        <Alert
+          type="warning"
+          showIcon
+          style={{ marginTop: 12 }}
+          message="统一入口 /v1/chat 的自动协议判断与调用顺序"
+          description={
+            <div>
+              <Typography.Paragraph style={{ marginBottom: 8 }}>
+                <b>协议判断顺序（非 AI 规则）</b>：① 请求头带 <Typography.Text code>anthropic-version</Typography.Text> →
+                判定为 Anthropic；② 请求体含顶层 <Typography.Text code>system</Typography.Text>、消息 content 为数组块、或含{" "}
+                <Typography.Text code>thinking</Typography.Text>/<Typography.Text code>metadata</Typography.Text> →
+                判定为 Anthropic；③ 否则判定为 OpenAI。
+              </Typography.Paragraph>
+              <Typography.Paragraph style={{ marginBottom: 0 }}>
+                <b>上游调用顺序</b>：客户端协议与供应商支持的协议<b>一致时优先同协议直连</b>（真流式透传，实时速度更准确）；
+                供应商不支持客户端协议时，才回退到跨协议转换。供应商可同时配置 OpenAI 与 Anthropic 两种 Base URL（分别测试通过后保存）。
+              </Typography.Paragraph>
+            </div>
+          }
+        />
 
         <Divider orientation="left" plain>
           调用参数

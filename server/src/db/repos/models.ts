@@ -15,6 +15,8 @@ export interface ProviderInput {
   name: string;
   type: string;
   base_url: string;
+  openai_base_url: string | null;
+  anthropic_base_url: string | null;
   api_key: string;
   extra_headers: string;
   enabled: number;
@@ -23,16 +25,21 @@ export interface ProviderInput {
 export function createProvider(input: ProviderInput): Provider {
   const id = `p_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
   const now = Date.now();
+  // legacy type/base_url 由双协议列自动推导
+  const type = input.openai_base_url ? "openai" : "anthropic";
+  const baseUrl = input.openai_base_url ?? input.anthropic_base_url ?? "";
   getDb()
     .prepare(
-      `INSERT INTO providers (id, name, type, base_url, api_key, extra_headers, enabled, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO providers (id, name, type, base_url, openai_base_url, anthropic_base_url, api_key, extra_headers, enabled, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       id,
       input.name,
-      input.type,
-      input.base_url,
+      type,
+      baseUrl,
+      input.openai_base_url,
+      input.anthropic_base_url,
       input.api_key,
       input.extra_headers,
       input.enabled,
@@ -45,15 +52,21 @@ export function createProvider(input: ProviderInput): Provider {
 export function updateProvider(id: string, patch: Partial<ProviderInput>): Provider | undefined {
   const existing = getProvider(id);
   if (!existing) return undefined;
-  const next = { ...existing, ...patch, updated_at: Date.now() };
+  const next = { ...existing, ...patch };
+  // 同步 legacy 字段
+  next.type = next.openai_base_url ? "openai" : "anthropic";
+  next.base_url = next.openai_base_url ?? next.anthropic_base_url ?? "";
+  next.updated_at = Date.now();
   getDb()
     .prepare(
-      `UPDATE providers SET name=?, type=?, base_url=?, api_key=?, extra_headers=?, enabled=?, updated_at=? WHERE id=?`,
+      `UPDATE providers SET name=?, type=?, base_url=?, openai_base_url=?, anthropic_base_url=?, api_key=?, extra_headers=?, enabled=?, updated_at=? WHERE id=?`,
     )
     .run(
       next.name,
       next.type,
       next.base_url,
+      next.openai_base_url,
+      next.anthropic_base_url,
       next.api_key,
       next.extra_headers,
       next.enabled,

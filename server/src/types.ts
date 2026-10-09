@@ -7,6 +7,8 @@ export interface Provider {
   name: string;
   type: ProviderType;
   base_url: string;
+  openai_base_url: string | null;
+  anthropic_base_url: string | null;
   api_key: string;
   extra_headers: string; // JSON
   enabled: number;

@@ -71,7 +71,7 @@ function parseUsage(raw: {
 export const openaiAdapter: ProviderAdapter = {
   async chat(req: NormalizedRequest): Promise<ChatResult> {
     const provider = req.extra?.__provider as Provider;
-    const url = joinUrl(provider.base_url, "chat/completions");
+    const url = joinUrl(provider.openai_base_url ?? provider.base_url, "chat/completions");
     const headers = buildHeaders(provider, `Bearer ${provider.api_key}`);
     const body = buildBody({ ...req, stream: false });
     const data = (await postJson(url, headers, body)) as {
@@ -108,7 +108,7 @@ export const openaiAdapter: ProviderAdapter = {
 
   async stream(req: NormalizedRequest): Promise<AsyncIterable<Uint8Array>> {
     const provider = req.extra?.__provider as Provider;
-    const url = joinUrl(provider.base_url, "chat/completions");
+    const url = joinUrl(provider.openai_base_url ?? provider.base_url, "chat/completions");
     const headers = buildHeaders(provider, `Bearer ${provider.api_key}`);
     const body = buildBody({ ...req, stream: true });
     const res = await postStream(url, headers, body);

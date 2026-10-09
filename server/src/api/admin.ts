@@ -54,11 +54,12 @@ import {
 import { generateApiKey, hashPassword } from "../lib/crypto.js";
 import { listServerTools, refreshServer } from "../mcp/manager.js";
 import { listProviderModels, fetchModelContext } from "../providers/discovery.js";
+import type { UpstreamProtocol } from "../providers/index.js";
 import { handleAssistantChat, assistantChatStream } from "../assistant/service.js";
 import { importSkillFromContent, importSkillFromPath } from "../skills/importer.js";
 import { openaiJson, fakeOpenAIStream, genId } from "../gateway/respond.js";
 import { toReadable } from "../lib/stream.js";
-import type { ChatMessage } from "../types.js";
+import type { ChatMessage, Provider } from "../types.js";
 import { getGlobalLiveSpeed } from "../gateway/live.js";
 import {
   usageSummary,
@@ -217,11 +218,16 @@ export function registerAdminRoutes(app: FastifyInstance): void {
 
   app.post("/api/providers", async (req, reply) => {
     const b = (req.body ?? {}) as Record<string, unknown>;
-    if (!b.name || !b.base_url) return reply.code(400).send({ error: "缺少名称或 base_url" });
+    const openaiUrl = b.openai_base_url ? String(b.openai_base_url).trim() : null;
+    const anthropicUrl = b.anthropic_base_url ? String(b.anthropic_base_url).trim() : null;
+    if (!b.name || (!openaiUrl && !anthropicUrl))
+      return reply.code(400).send({ error: "缺少名称，且至少需填写一种协议的 Base URL" });
     const p = createProvider({
       name: String(b.name),
-      type: String(b.type ?? "openai"),
-      base_url: String(b.base_url),
+      type: openaiUrl ? "openai" : "anthropic",
+      base_url: openaiUrl ?? anthropicUrl ?? "",
+      openai_base_url: openaiUrl,
+      anthropic_base_url: anthropicUrl,
       api_key: String(b.api_key ?? ""),
       extra_headers: asJsonString(b.extra_headers, "{}"),
       enabled: b.enabled === false ? 0 : 1,
@@ -234,11 +240,13 @@ export function registerAdminRoutes(app: FastifyInstance): void {
     const b = (req.body ?? {}) as Record<string, unknown>;
     const patch: Record<string, unknown> = {};
     if (b.name !== undefined) patch.name = String(b.name);
-    if (b.type !== undefined) patch.type = String(b.type);
-    if (b.base_url !== undefined) patch.base_url = String(b.base_url);
     if (b.api_key !== undefined) patch.api_key = String(b.api_key);
     if (b.extra_headers !== undefined) patch.extra_headers = asJsonString(b.extra_headers, "{}");
     if (b.enabled !== undefined) patch.enabled = b.enabled ? 1 : 0;
+    if (b.openai_base_url !== undefined)
+      patch.openai_base_url = b.openai_base_url ? String(b.openai_base_url).trim() : null;
+    if (b.anthropic_base_url !== undefined)
+      patch.anthropic_base_url = b.anthropic_base_url ? String(b.anthropic_base_url).trim() : null;
     const p = updateProvider(id, patch as never);
     if (!p) return reply.code(404).send({ error: "供应商不存在" });
     return reply.send(p);
@@ -249,16 +257,28 @@ export function registerAdminRoutes(app: FastifyInstance): void {
     return reply.send({ ok: true });
   });
 
-  // 测试供应商连通性并拉取模型列表
+  // 测试供应商连通性并拉取模型列表（对所有已填写的协议分别测试）
+  const testProvider = async (p: Provider) => {
+    const protocols: UpstreamProtocol[] = [];
+    if (p.openai_base_url) protocols.push("openai");
+    if (p.anthropic_base_url) protocols.push("anthropic");
+    const results = [];
+    for (const proto of protocols) {
+      try {
+        const models = await listProviderModels(p, proto);
+        results.push({ protocol: proto, ok: true, models, error: null });
+      } catch (e) {
+        results.push({ protocol: proto, ok: false, models: [], error: (e as Error).message });
+      }
+    }
+    return { results, allOk: results.length > 0 && results.every((r) => r.ok) };
+  };
+
   app.post("/api/providers/:id/test", async (req, reply) => {
     const p = getProvider((req.params as { id: string }).id);
     if (!p) return reply.code(404).send({ error: "供应商不存在" });
-    try {
-      const models = await listProviderModels(p);
-      return reply.send({ ok: true, models });
-    } catch (e) {
-      return reply.code(502).send({ error: (e as Error).message });
-    }
+    const { results, allOk } = await testProvider(p);
+    return reply.send({ ok: allOk, results });
   });
 
   // 测试「未保存」的供应商配置（对话框内先测试通过再保存）
@@ -269,26 +289,26 @@ export function registerAdminRoutes(app: FastifyInstance): void {
       name: "test",
       type: (b.type as string) || "openai",
       base_url: String(b.base_url ?? ""),
+      openai_base_url: b.openai_base_url ? String(b.openai_base_url).trim() : null,
+      anthropic_base_url: b.anthropic_base_url ? String(b.anthropic_base_url).trim() : null,
       api_key: String(b.api_key ?? ""),
       extra_headers: asJsonString(b.extra_headers, "{}"),
       enabled: 1,
       created_at: 0,
       updated_at: 0,
-    } as never;
-    try {
-      const models = await listProviderModels(p);
-      return reply.send({ ok: true, models });
-    } catch (e) {
-      return reply.code(502).send({ error: (e as Error).message });
-    }
+    } as Provider;
+    const { results, allOk } = await testProvider(p);
+    return reply.send({ ok: allOk, results });
   });
 
-  // 拉取某供应商的可用模型（含尽力获取的上下文窗口）
+  // 拉取某供应商的可用模型（含尽力获取的上下文窗口），可选 ?protocol=openai|anthropic
   app.get("/api/providers/:id/models", async (req, reply) => {
     const p = getProvider((req.params as { id: string }).id);
     if (!p) return reply.code(404).send({ error: "供应商不存在" });
+    const q = req.query as { protocol?: string };
+    const proto: UpstreamProtocol = q.protocol === "anthropic" ? "anthropic" : q.protocol === "openai" ? "openai" : p.type === "anthropic" ? "anthropic" : "openai";
     try {
-      const models = await listProviderModels(p);
+      const models = await listProviderModels(p, proto);
       return reply.send({ models });
     } catch (e) {
       return reply.code(502).send({ error: (e as Error).message });
@@ -300,7 +320,9 @@ export function registerAdminRoutes(app: FastifyInstance): void {
     const p = getProvider((req.params as { id: string }).id);
     if (!p) return reply.code(404).send({ error: "供应商不存在" });
     const name = decodeURIComponent((req.params as { name: string }).name);
-    const context_window = await fetchModelContext(p, name);
+    const q = req.query as { protocol?: string };
+    const proto: UpstreamProtocol = q.protocol === "anthropic" ? "anthropic" : q.protocol === "openai" ? "openai" : p.type === "anthropic" ? "anthropic" : "openai";
+    const context_window = await fetchModelContext(p, name, proto);
     return reply.send({ context_window });
   });
 

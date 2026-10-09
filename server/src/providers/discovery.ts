@@ -1,4 +1,5 @@
 import type { Provider } from "../types.js";
+import type { UpstreamProtocol } from "./index.js";
 import { joinUrl } from "./http.js";
 
 export interface DiscoveredModel {
@@ -6,9 +7,14 @@ export interface DiscoveredModel {
   context_window: number | null;
 }
 
-function buildHeaders(provider: Provider): Record<string, string> {
+function protocolBaseUrl(provider: Provider, protocol: UpstreamProtocol): string {
+  if (protocol === "anthropic") return provider.anthropic_base_url ?? provider.base_url;
+  return provider.openai_base_url ?? provider.base_url;
+}
+
+function buildHeaders(provider: Provider, protocol: UpstreamProtocol): Record<string, string> {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (provider.type === "anthropic") {
+  if (protocol === "anthropic") {
     headers["x-api-key"] = provider.api_key;
     headers["anthropic-version"] = "2023-06-01";
   } else {
@@ -41,13 +47,19 @@ function extractContextWindow(obj: Record<string, unknown>): number | null {
   return null;
 }
 
-/** 列出供应商在给定 API Key 下的可用模型（尽力获取上下文窗口） */
-export async function listProviderModels(provider: Provider): Promise<DiscoveredModel[]> {
-  const isAnthropic = provider.type === "anthropic";
-  const url = isAnthropic
-    ? joinUrl(provider.base_url, "v1/models")
-    : joinUrl(provider.base_url, "models");
-  const res = await fetch(url, { headers: buildHeaders(provider) });
+function defaultProtocol(provider: Provider): UpstreamProtocol {
+  return provider.type === "anthropic" ? "anthropic" : "openai";
+}
+
+/** 列出供应商在给定协议 + API Key 下的可用模型（尽力获取上下文窗口） */
+export async function listProviderModels(
+  provider: Provider,
+  protocol: UpstreamProtocol = defaultProtocol(provider),
+): Promise<DiscoveredModel[]> {
+  const base = protocolBaseUrl(provider, protocol);
+  const url =
+    protocol === "anthropic" ? joinUrl(base, "v1/models") : joinUrl(base, "models");
+  const res = await fetch(url, { headers: buildHeaders(provider, protocol) });
   const text = await res.text();
   if (!res.ok) {
     throw new Error(`上游返回 ${res.status}: ${text.slice(0, 300)}`);
@@ -73,14 +85,19 @@ export async function listProviderModels(provider: Provider): Promise<Discovered
 }
 
 /** 尽力获取单个模型的上下文窗口（多数供应商需查 /models/{id} 详情） */
-export async function fetchModelContext(provider: Provider, modelName: string): Promise<number | null> {
-  if (provider.type === "anthropic") {
+export async function fetchModelContext(
+  provider: Provider,
+  modelName: string,
+  protocol: UpstreamProtocol = defaultProtocol(provider),
+): Promise<number | null> {
+  if (protocol === "anthropic") {
     // Anthropic 的 models 接口不提供上下文窗口
     return null;
   }
   try {
-    const url = joinUrl(provider.base_url, `models/${encodeURIComponent(modelName)}`);
-    const res = await fetch(url, { headers: buildHeaders(provider) });
+    const base = protocolBaseUrl(provider, protocol);
+    const url = joinUrl(base, `models/${encodeURIComponent(modelName)}`);
+    const res = await fetch(url, { headers: buildHeaders(provider, protocol) });
     if (!res.ok) return null;
     const obj = (await res.json()) as Record<string, unknown>;
     return extractContextWindow(obj);
@@ -88,3 +105,5 @@ export async function fetchModelContext(provider: Provider, modelName: string): 
     return null;
   }
 }
+
+export { protocolBaseUrl };
