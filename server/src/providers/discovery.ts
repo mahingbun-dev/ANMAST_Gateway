@@ -84,6 +84,27 @@ export async function listProviderModels(
   return out;
 }
 
+/**
+ * 用任一可用方法拉取模型列表（同一供应商的两种协议共用同一套模型）：
+ * 依次尝试 OpenAI /models、Anthropic /v1/models，取第一个返回非空列表的。
+ */
+export async function listProviderModelsAny(provider: Provider): Promise<DiscoveredModel[]> {
+  const attempts: UpstreamProtocol[] = [];
+  if (provider.openai_base_url) attempts.push("openai");
+  if (provider.anthropic_base_url) attempts.push("anthropic");
+  let lastErr = "该供应商未配置任何协议端点";
+  for (const proto of attempts) {
+    try {
+      const models = await listProviderModels(provider, proto);
+      if (models.length) return models;
+      lastErr = "上游未返回任何模型";
+    } catch (e) {
+      lastErr = (e as Error).message;
+    }
+  }
+  throw new Error(lastErr);
+}
+
 /** 最小请求验证连通性：401/403 视为鉴权失败，其余状态（含 400/404）视为「端点可达、鉴权通过」 */
 export async function pingProvider(
   provider: Provider,

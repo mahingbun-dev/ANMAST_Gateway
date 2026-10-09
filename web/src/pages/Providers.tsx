@@ -32,13 +32,15 @@ interface Provider {
 interface ProtoResult {
   protocol: "openai" | "anthropic";
   ok: boolean;
-  models: { id: string; context_window: number | null }[];
   error: string | null;
-  note?: string | null;
 }
 interface TestResult {
   ok: boolean;
   results: ProtoResult[];
+}
+interface DiscoveredModel {
+  id: string;
+  context_window: number | null;
 }
 
 // 已知供应商双协议端点映射（非 AI 确定性映射；空字符串表示该供应商不支持该协议）
@@ -78,6 +80,8 @@ export default function Providers() {
   const [testing, setTesting] = useState(false);
   const [testPassed, setTestPassed] = useState(false);
   const [testResults, setTestResults] = useState<ProtoResult[] | null>(null);
+  const [modelList, setModelList] = useState<DiscoveredModel[] | null>(null);
+  const [fetchingModels, setFetchingModels] = useState(false);
   const [fullApiKey, setFullApiKey] = useState("");
   const [form] = Form.useForm();
   const watchedOpenai = Form.useWatch("openai_base_url", form) as string | undefined;
@@ -99,6 +103,58 @@ export default function Providers() {
   const resetTest = () => {
     setTestPassed(false);
     setTestResults(null);
+    setModelList(null);
+  };
+
+  const getEffectiveValues = async () => {
+    let values: Record<string, unknown>;
+    try {
+      values = await form.validateFields(["name", "openai_base_url", "anthropic_base_url", "api_key", "extra_headers"]);
+    } catch {
+      return null;
+    }
+    if (!String(values.openai_base_url ?? "").trim() && !String(values.anthropic_base_url ?? "").trim()) {
+      message.warning("请至少填写一种协议的 Base URL");
+      return null;
+    }
+    const apiKey = String(values.api_key ?? "").trim() || fullApiKey;
+    return { ...values, api_key: apiKey };
+  };
+
+  // 第一步：仅测试各协议连通性（不拉模型列表）
+  const runTest = async () => {
+    const values = await getEffectiveValues();
+    if (!values) return;
+    setTesting(true);
+    try {
+      const r = await api.post<TestResult>("/api/providers/test", values);
+      setTestResults(r.results);
+      setTestPassed(r.ok);
+      setModelList(null);
+      if (r.ok) message.success("所有协议连接成功");
+      else message.error("存在连接失败的协议，请查看详情");
+    } catch (e) {
+      resetTest();
+      message.error((e as Error).message);
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  // 第二步：获取模型列表（任一方法，两种协议共用）
+  const fetchModels = async () => {
+    const values = await getEffectiveValues();
+    if (!values) return;
+    setFetchingModels(true);
+    try {
+      const r = await api.post<{ models: DiscoveredModel[] }>("/api/providers/models", values);
+      setModelList(r.models);
+      message.success(`获取到 ${r.models.length} 个模型`);
+    } catch (e) {
+      message.error((e as Error).message);
+    } finally {
+      setFetchingModels(false);
+    }
   };
 
   const openCreate = () => {
@@ -119,33 +175,6 @@ export default function Providers() {
     resetTest();
     setOpen(true);
     api.get<Provider>(`/api/providers/${p.id}`).then((full) => setFullApiKey(full.api_key)).catch(() => setFullApiKey(""));
-  };
-
-  const runTest = async () => {
-    let values: Record<string, unknown>;
-    try {
-      values = await form.validateFields(["name", "openai_base_url", "anthropic_base_url", "api_key", "extra_headers"]);
-    } catch {
-      return;
-    }
-    if (!String(values.openai_base_url ?? "").trim() && !String(values.anthropic_base_url ?? "").trim()) {
-      message.warning("请至少填写一种协议的 Base URL");
-      return;
-    }
-    const apiKey = String(values.api_key ?? "").trim() || fullApiKey;
-    setTesting(true);
-    try {
-      const r = await api.post<TestResult>("/api/providers/test", { ...values, api_key: apiKey });
-      setTestResults(r.results);
-      setTestPassed(r.ok);
-      if (r.ok) message.success("所有协议均测试通过");
-      else message.error("存在未通过的协议，请查看详情");
-    } catch (e) {
-      resetTest();
-      message.error((e as Error).message);
-    } finally {
-      setTesting(false);
-    }
   };
 
   const submit = async () => {
@@ -179,6 +208,14 @@ export default function Providers() {
     try {
       const r = await api.post<TestResult>(`/api/providers/${id}/test`);
       const ok = r.results.filter((x) => x.ok).length;
+      // 同时尝试获取模型列表（共用）
+      let models: DiscoveredModel[] = [];
+      try {
+        const m = await api.get<{ models: DiscoveredModel[] }>(`/api/providers/${id}/models`);
+        models = m.models ?? [];
+      } catch {
+        /* 忽略：模型列表获取失败不影响连通性测试结果 */
+      }
       message.success({ content: `测试完成：${ok}/${r.results.length} 个协议通过`, key: "test" });
       Modal.info({
         title: "测试结果",
@@ -187,9 +224,19 @@ export default function Providers() {
             {r.results.map((x) => (
               <div key={x.protocol}>
                 <Tag color={x.ok ? "green" : "red"}>{x.protocol === "openai" ? "OpenAI 兼容" : "Anthropic 兼容"}</Tag>
-                {x.ok ? `发现 ${x.models.length} 个模型` : x.error}
+                {x.ok ? "连接成功" : x.error}
               </div>
             ))}
+            {models.length > 0 && (
+              <div>
+                <Typography.Text strong>可用模型（{models.length}）：</Typography.Text>
+                <div style={{ maxHeight: 200, overflow: "auto" }}>
+                  {models.map((m) => (
+                    <Tag key={m.id}>{m.id}</Tag>
+                  ))}
+                </div>
+              </div>
+            )}
           </Space>
         ),
       });
@@ -351,9 +398,14 @@ export default function Providers() {
           </Form.Item>
 
           <Space direction="vertical" style={{ width: "100%" }}>
-            <Button icon={<ApiOutlined />} loading={testing} onClick={runTest} block>
-              测试连接
-            </Button>
+            <Space style={{ width: "100%" }}>
+              <Button icon={<ApiOutlined />} loading={testing} onClick={runTest} block>
+                1. 测试连接
+              </Button>
+              <Button loading={fetchingModels} onClick={fetchModels} block>
+                2. 获取模型列表
+              </Button>
+            </Space>
             {testResults && (
               <Space direction="vertical" style={{ width: "100%" }}>
                 {testResults.map((x) => (
@@ -364,12 +416,26 @@ export default function Providers() {
                     icon={x.ok ? <CheckCircleOutlined /> : undefined}
                     message={
                       x.ok
-                        ? `${x.protocol === "openai" ? "OpenAI 兼容" : "Anthropic 兼容"} ✓ ${x.models.length ? `发现 ${x.models.length} 个模型` : x.note ?? "已连通"}`
-                        : `${x.protocol === "openai" ? "OpenAI 兼容" : "Anthropic 兼容"} ✗ ${x.error ?? "测试失败"}`
+                        ? `${x.protocol === "openai" ? "OpenAI 兼容" : "Anthropic 兼容"} ✓ 连接成功`
+                        : `${x.protocol === "openai" ? "OpenAI 兼容" : "Anthropic 兼容"} ✗ ${x.error ?? "连接失败"}`
                     }
                   />
                 ))}
               </Space>
+            )}
+            {modelList && (
+              <Alert
+                type="info"
+                showIcon
+                message={`模型列表（${modelList.length} 个，两种协议共用）`}
+                description={
+                  <div>
+                    {modelList.map((m) => (
+                      <Tag key={m.id}>{m.id}</Tag>
+                    ))}
+                  </div>
+                }
+              />
             )}
           </Space>
         </Form>

@@ -53,7 +53,7 @@ import {
 } from "../db/repos/logs.js";
 import { generateApiKey, hashPassword } from "../lib/crypto.js";
 import { listServerTools, refreshServer } from "../mcp/manager.js";
-import { listProviderModels, fetchModelContext, pingProvider } from "../providers/discovery.js";
+import { listProviderModelsAny, fetchModelContext, pingProvider } from "../providers/discovery.js";
 import type { UpstreamProtocol } from "../providers/index.js";
 import { handleAssistantChat, assistantChatStream } from "../assistant/service.js";
 import { importSkillFromContent, importSkillFromPath } from "../skills/importer.js";
@@ -257,37 +257,19 @@ export function registerAdminRoutes(app: FastifyInstance): void {
     return reply.send({ ok: true });
   });
 
-  // 测试供应商连通性并拉取模型列表（对所有已填写的协议分别测试）
+  // 第一步：仅测试各协议的连通性（逐协议 ping，不拉模型列表）
   const testProvider = async (p: Provider) => {
     const protocols: UpstreamProtocol[] = [];
     if (p.openai_base_url) protocols.push("openai");
     if (p.anthropic_base_url) protocols.push("anthropic");
     const results = [];
     for (const proto of protocols) {
-      try {
-        const models = await listProviderModels(p, proto);
-        results.push({ protocol: proto, ok: true, models, error: null, note: null });
-      } catch (e) {
-        // /models 列表失败（常见于 Anthropic 端点未实现 /v1/models）→ 用最小请求验证连通性
-        const ping = await pingProvider(p, proto);
-        if (ping.ok) {
-          results.push({
-            protocol: proto,
-            ok: true,
-            models: [],
-            error: null,
-            note: "已连通（该端点未实现模型列表接口，请手动填写模型名）",
-          });
-        } else {
-          results.push({
-            protocol: proto,
-            ok: false,
-            models: [],
-            error: `${(e as Error).message}；${ping.error ?? "连通性验证失败"}`,
-            note: null,
-          });
-        }
-      }
+      const ping = await pingProvider(p, proto);
+      results.push({
+        protocol: proto,
+        ok: ping.ok,
+        error: ping.ok ? null : ping.error ?? "连通性验证失败",
+      });
     }
     return { results, allOk: results.length > 0 && results.every((r) => r.ok) };
   };
@@ -319,14 +301,40 @@ export function registerAdminRoutes(app: FastifyInstance): void {
     return reply.send({ ok: allOk, results });
   });
 
-  // 拉取某供应商的可用模型（含尽力获取的上下文窗口），可选 ?protocol=openai|anthropic
+  // 第二步：获取模型列表（任一方法，两种协议共用）
+  const fetchModelsAny = async (p: Provider) => {
+    const models = await listProviderModelsAny(p);
+    return { models };
+  };
+
+  app.post("/api/providers/models", async (req, reply) => {
+    const b = (req.body ?? {}) as Record<string, unknown>;
+    const p = {
+      id: "_t",
+      name: "test",
+      type: (b.type as string) || "openai",
+      base_url: String(b.base_url ?? ""),
+      openai_base_url: b.openai_base_url ? String(b.openai_base_url).trim() : null,
+      anthropic_base_url: b.anthropic_base_url ? String(b.anthropic_base_url).trim() : null,
+      api_key: String(b.api_key ?? ""),
+      extra_headers: asJsonString(b.extra_headers, "{}"),
+      enabled: 1,
+      created_at: 0,
+      updated_at: 0,
+    } as Provider;
+    try {
+      return reply.send(await fetchModelsAny(p));
+    } catch (e) {
+      return reply.code(502).send({ error: (e as Error).message });
+    }
+  });
+
+  // 拉取某供应商的可用模型（任一方法，两种协议共用）
   app.get("/api/providers/:id/models", async (req, reply) => {
     const p = getProvider((req.params as { id: string }).id);
     if (!p) return reply.code(404).send({ error: "供应商不存在" });
-    const q = req.query as { protocol?: string };
-    const proto: UpstreamProtocol = q.protocol === "anthropic" ? "anthropic" : q.protocol === "openai" ? "openai" : p.type === "anthropic" ? "anthropic" : "openai";
     try {
-      const models = await listProviderModels(p, proto);
+      const models = await listProviderModelsAny(p);
       return reply.send({ models });
     } catch (e) {
       return reply.code(502).send({ error: (e as Error).message });
