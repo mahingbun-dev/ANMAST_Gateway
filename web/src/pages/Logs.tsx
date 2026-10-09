@@ -20,6 +20,7 @@ import dayjs from "dayjs";
 interface RequestRecord {
   id: string;
   protocol: string;
+  upstream_protocol: string | null;
   model_requested: string;
   model_used: string;
   tier_id: string | null;
@@ -161,6 +162,21 @@ export default function Logs() {
             render: (v: number) => dayjs(v).format("MM-DD HH:mm:ss"),
           },
           {
+            title: "协议",
+            render: (_: unknown, r: RequestRecord) => {
+              const client = r.protocol === "anthropic" ? "Anthropic" : "OpenAI";
+              const upstream = r.upstream_protocol === "anthropic" ? "Anthropic" : r.upstream_protocol === "openai" ? "OpenAI" : null;
+              if (!upstream || upstream === client) return <Tag>{client}</Tag>;
+              return (
+                <Space size={4}>
+                  <Tag color="blue">{client}</Tag>
+                  <Typography.Text type="secondary">→</Typography.Text>
+                  <Tag color="orange">{upstream}</Tag>
+                </Space>
+              );
+            },
+          },
+          {
             title: "模型",
             render: (_: unknown, r: RequestRecord) => (
               <Space direction="vertical" size={0}>
@@ -232,8 +248,8 @@ export default function Logs() {
               const fmt = (v: number | null) => (v == null ? "—" : v.toFixed(1));
               return (
                 <Space direction="vertical" size={0} style={{ fontSize: 12 }}>
-                  <span>源 {fmt(r.source_speed)}</span>
-                  <span>出 {fmt(r.egress_speed)}</span>
+                  <span>输入 {fmt(r.source_speed)}</span>
+                  <span>输出 {fmt(r.egress_speed)}</span>
                 </Space>
               );
             },

@@ -372,6 +372,7 @@ export async function processChat(input: ProcessInput): Promise<GatewayResult> {
     cost: 0,
     latency_ms: 0,
     first_token_ms: null,
+    upstream_protocol: null,
     request_json: safeJson(input.rawBody),
     response_json: null,
     client_ip: clientIp,
@@ -457,6 +458,7 @@ export async function processChat(input: ProcessInput): Promise<GatewayResult> {
     updateRequest(requestId, {
       model_used: model.name,
       provider_id: model.provider_id,
+      upstream_protocol: getUpstreamProtocol(run.candidate.provider, protocol),
       status: "success",
       prompt_tokens: run.usage.promptTokens,
       completion_tokens: run.usage.completionTokens,
@@ -566,6 +568,7 @@ async function* streamPassthrough(ctx: PassthroughCtx): AsyncIterable<string | U
       updateRequest(ctx.requestId, {
         model_used: cand.model.name,
         provider_id: cand.model.provider_id,
+        upstream_protocol: getUpstreamProtocol(cand.provider, ctx.protocol),
         status: "success",
         prompt_tokens: usage.promptTokens,
         completion_tokens: usage.completionTokens,

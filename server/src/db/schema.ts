@@ -170,6 +170,17 @@ export const migrations: string[] = [
   UPDATE providers SET openai_base_url = base_url WHERE type = 'openai';
   UPDATE providers SET anthropic_base_url = base_url WHERE type = 'anthropic';
   `,
+  // v7 —— 请求记录上游协议 + 用户自定义已知供应商
+  `
+  ALTER TABLE requests ADD COLUMN upstream_protocol TEXT;
+  CREATE TABLE IF NOT EXISTS known_providers (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    openai_base_url TEXT,
+    anthropic_base_url TEXT,
+    created_at INTEGER NOT NULL
+  );
+  `,
 ];
 
 export const DEFAULT_TIERS: { id: string; name: string; description: string; sort: number }[] = [

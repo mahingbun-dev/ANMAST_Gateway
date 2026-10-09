@@ -60,10 +60,10 @@ const KNOWN_PROVIDERS: KnownProvider[] = [
   { name: "Anthropic（仅 Anthropic 协议）", openai: "", anthropic: "https://api.anthropic.com" },
 ];
 
-function matchKnown(baseUrl: string): KnownProvider | undefined {
+function matchKnown(baseUrl: string, list: KnownProvider[] = KNOWN_PROVIDERS): KnownProvider | undefined {
   try {
     const host = new URL(baseUrl).hostname;
-    return KNOWN_PROVIDERS.find((p) => {
+    return list.find((p) => {
       const hosts = [p.openai, p.anthropic].filter(Boolean).map((u) => new URL(u).hostname);
       return hosts.includes(host);
     });
@@ -82,13 +82,32 @@ export default function Providers() {
   const [testResults, setTestResults] = useState<ProtoResult[] | null>(null);
   const [modelList, setModelList] = useState<DiscoveredModel[] | null>(null);
   const [fullApiKey, setFullApiKey] = useState("");
+  const [userKnown, setUserKnown] = useState<KnownProvider[]>([]);
   const [form] = Form.useForm();
   const watchedOpenai = Form.useWatch("openai_base_url", form) as string | undefined;
   const watchedAnthropic = Form.useWatch("anthropic_base_url", form) as string | undefined;
 
+  const loadKnown = () => {
+    api
+      .get<{ id: string; name: string; openai_base_url: string | null; anthropic_base_url: string | null }[]>("/api/known-providers")
+      .then((list) =>
+        setUserKnown(
+          list.map((x) => ({
+            name: x.name,
+            openai: x.openai_base_url ?? "",
+            anthropic: x.anthropic_base_url ?? "",
+          })),
+        ),
+      )
+      .catch(() => {});
+  };
+  useEffect(loadKnown, []);
+
+  const allKnown = [...KNOWN_PROVIDERS, ...userKnown];
+
   // 从任意一个已填写的 Base URL 检测已知供应商，用于补全另一协议
-  const knownFromOpenai = watchedOpenai ? matchKnown(String(watchedOpenai)) : undefined;
-  const knownFromAnthropic = watchedAnthropic ? matchKnown(String(watchedAnthropic)) : undefined;
+  const knownFromOpenai = watchedOpenai ? matchKnown(String(watchedOpenai), allKnown) : undefined;
+  const knownFromAnthropic = watchedAnthropic ? matchKnown(String(watchedAnthropic), allKnown) : undefined;
   const known = knownFromOpenai ?? knownFromAnthropic;
   const missingOpenai = known && !watchedOpenai && known.openai;
   const missingAnthropic = known && !watchedAnthropic && known.anthropic;
@@ -204,6 +223,34 @@ export default function Providers() {
       message.success("已保存");
       setOpen(false);
       load();
+      // 非已知供应商：询问是否加入已知供应商列表
+      const openaiUrl = String(body.openai_base_url ?? "").trim();
+      const anthropicUrl = String(body.anthropic_base_url ?? "").trim();
+      const isKnown = allKnown.some(
+        (p) =>
+          (openaiUrl && p.openai === openaiUrl) || (anthropicUrl && p.anthropic === anthropicUrl),
+      );
+      if (!isKnown) {
+        Modal.confirm({
+          title: "添加到已知供应商列表？",
+          content: "该供应商不在已知列表中。加入后，下次添加供应商时可在「已知供应商」下拉中快速选择（含名称与双协议地址）。",
+          okText: "添加",
+          cancelText: "暂不",
+          onOk: async () => {
+            try {
+              await api.post("/api/known-providers", {
+                name: body.name,
+                openai_base_url: openaiUrl || null,
+                anthropic_base_url: anthropicUrl || null,
+              });
+              message.success("已加入已知供应商列表");
+              loadKnown();
+            } catch (e2) {
+              message.error((e2 as Error).message);
+            }
+          },
+        });
+      }
     } catch (e) {
       message.error((e as Error).message);
     }
@@ -330,9 +377,9 @@ export default function Providers() {
             <Select
               allowClear
               placeholder="选择后自动填充名称与两种协议的 Base URL"
-              options={KNOWN_PROVIDERS.map((p) => ({ value: p.name, label: p.name }))}
+              options={allKnown.map((p) => ({ value: p.name, label: p.name }))}
               onChange={(name) => {
-                const p = KNOWN_PROVIDERS.find((x) => x.name === name);
+                const p = allKnown.find((x) => x.name === name);
                 if (p) {
                   form.setFieldsValue({
                     name: p.name.replace(/（.*）/, ""),

@@ -8,8 +8,8 @@ export function insertRequest(r: RequestRecord): void {
     .prepare(
       `INSERT INTO requests
        (id, api_key_id, protocol, endpoint, model_requested, model_used, provider_id, tier_id, tier_source, conversation_id, status, error,
-        prompt_tokens, completion_tokens, total_tokens, cache_read_tokens, cache_creation_tokens, cost, latency_ms, first_token_ms, request_json, response_json, client_ip, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        prompt_tokens, completion_tokens, total_tokens, cache_read_tokens, cache_creation_tokens, cost, latency_ms, first_token_ms, upstream_protocol, request_json, response_json, client_ip, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       r.id,
@@ -32,6 +32,7 @@ export function insertRequest(r: RequestRecord): void {
       r.cost,
       r.latency_ms,
       r.first_token_ms ?? null,
+      r.upstream_protocol ?? null,
       r.request_json,
       r.response_json,
       r.client_ip,
@@ -54,6 +55,7 @@ export function updateRequest(
       | "cost"
       | "latency_ms"
       | "first_token_ms"
+      | "upstream_protocol"
       | "response_json"
       | "conversation_id"
       | "model_used"

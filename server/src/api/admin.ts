@@ -350,6 +350,30 @@ export function registerAdminRoutes(app: FastifyInstance): void {
     return reply.send({ context_window });
   });
 
+  // ---------- 用户自定义已知供应商 ----------
+  app.get("/api/known-providers", async () => {
+    return getDb().prepare("SELECT id, name, openai_base_url, anthropic_base_url FROM known_providers ORDER BY created_at ASC").all();
+  });
+
+  app.post("/api/known-providers", async (req, reply) => {
+    const b = (req.body ?? {}) as Record<string, unknown>;
+    const name = String(b.name ?? "").trim();
+    const openai = b.openai_base_url ? String(b.openai_base_url).trim() : null;
+    const anthropic = b.anthropic_base_url ? String(b.anthropic_base_url).trim() : null;
+    if (!name || (!openai && !anthropic))
+      return reply.code(400).send({ error: "缺少名称或至少一种协议的 Base URL" });
+    const id = `kp_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+    getDb()
+      .prepare("INSERT INTO known_providers (id, name, openai_base_url, anthropic_base_url, created_at) VALUES (?, ?, ?, ?, ?)")
+      .run(id, name, openai, anthropic, Date.now());
+    return reply.code(201).send({ id, name, openai_base_url: openai, anthropic_base_url: anthropic });
+  });
+
+  app.delete("/api/known-providers/:id", async (req, reply) => {
+    getDb().prepare("DELETE FROM known_providers WHERE id = ?").run((req.params as { id: string }).id);
+    return reply.send({ ok: true });
+  });
+
   // ---------- 模型 ----------
   app.get("/api/models", async () => {
     const providers = listProviders();

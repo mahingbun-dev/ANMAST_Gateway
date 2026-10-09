@@ -113,6 +113,7 @@ export interface RequestRecord {
   cost: number;
   latency_ms: number;
   first_token_ms: number | null;
+  upstream_protocol: string | null;
   request_json: string | null;
   response_json: string | null;
   client_ip: string | null;
