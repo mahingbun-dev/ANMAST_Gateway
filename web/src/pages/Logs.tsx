@@ -36,6 +36,7 @@ interface RequestRecord {
   latency_ms: number;
   source_speed: number | null;
   egress_speed: number | null;
+  compression_ratio: number | null;
   client_ip: string | null;
   conversation_id: string | null;
   request_json: string | null;
@@ -269,6 +270,17 @@ export default function Logs() {
                 </Space>
               );
             },
+          },
+          {
+            title: "压缩率",
+            render: (_: unknown, r: RequestRecord) =>
+              r.compression_ratio == null ? (
+                "—"
+              ) : (
+                <Tag color={r.compression_ratio > 0 ? "green" : "default"}>
+                  {(r.compression_ratio * 100).toFixed(1)}%
+                </Tag>
+              ),
           },
           {
             title: "操作",

@@ -49,7 +49,9 @@ import {
   statsDaily,
   statsByModel,
   statsByKey,
+  statsCompression,
   conversationModels,
+  conversationTokens,
 } from "../db/repos/logs.js";
 import { generateApiKey, hashPassword } from "../lib/crypto.js";
 import { listServerTools, refreshServer } from "../mcp/manager.js";
@@ -61,6 +63,7 @@ import { openaiJson, fakeOpenAIStream, genId } from "../gateway/respond.js";
 import { toReadable } from "../lib/stream.js";
 import type { ChatMessage, Provider } from "../types.js";
 import { getGlobalLiveSpeed } from "../gateway/live.js";
+import { getCompressionConfig, saveCompressionConfig, type CompressionConfig } from "../gateway/compress.js";
 import {
   usageSummary,
   usageTimeseries,
@@ -112,6 +115,18 @@ function computeSpeed(r: {
   const egrDur = ttf != null && total > ttf ? total - ttf : total;
   const egr = egrDur > 0 ? r.completion_tokens / (egrDur / 1000) : null;
   return { source_speed: src, egress_speed: egr };
+}
+
+/** 计算某条记录的上下文压缩率（0~1，未压缩返回 null） */
+function compressionRatio(r: {
+  prompt_tokens: number;
+  input_tokens_before: number | null;
+  input_tokens_after: number | null;
+}): number | null {
+  if (r.input_tokens_before == null || r.input_tokens_after == null) return null;
+  const saved = Math.max(0, r.input_tokens_before - r.input_tokens_after);
+  const uncompressed = r.prompt_tokens + saved;
+  return uncompressed > 0 ? saved / uncompressed : 0;
 }
 
 const SETTINGS_DEFAULTS: Record<string, unknown> = {
@@ -645,7 +660,7 @@ export function registerAdminRoutes(app: FastifyInstance): void {
     });
     return {
       ...res,
-      items: res.items.map((r) => ({ ...r, ...computeSpeed(r) })),
+      items: res.items.map((r) => ({ ...r, ...computeSpeed(r), compression_ratio: compressionRatio(r) })),
     };
   });
 
@@ -664,9 +679,10 @@ export function registerAdminRoutes(app: FastifyInstance): void {
       pageSize: q.pageSize ? Number(q.pageSize) : 50,
     });
     const modelsMap = conversationModels(res.items.map((c) => c.id));
+    const tokensMap = conversationTokens(res.items.map((c) => c.id));
     return {
       ...res,
-      items: res.items.map((c) => ({ ...c, models: modelsMap[c.id] ?? [] })),
+      items: res.items.map((c) => ({ ...c, models: modelsMap[c.id] ?? [], tokens: tokensMap[c.id] ?? 0 })),
     };
   });
 
@@ -684,6 +700,7 @@ export function registerAdminRoutes(app: FastifyInstance): void {
       daily: statsDaily(30),
       byModel: statsByModel(),
       byKey: statsByKey(),
+      compression: statsCompression(),
     };
   });
 
@@ -729,6 +746,25 @@ export function registerAdminRoutes(app: FastifyInstance): void {
     }
     logger.info("设置已更新", Object.keys(b));
     return reply.send({ ok: true });
+  });
+
+  // ---------- 上下文压缩设置 ----------
+  app.get("/api/compression", async () => {
+    return getCompressionConfig();
+  });
+
+  app.put("/api/compression", async (req, reply) => {
+    const b = (req.body ?? {}) as Partial<CompressionConfig>;
+    const cur = getCompressionConfig();
+    const next: CompressionConfig = {
+      enabled: b.enabled !== undefined ? !!b.enabled : cur.enabled,
+      anchor_messages: b.anchor_messages !== undefined ? Number(b.anchor_messages) : cur.anchor_messages,
+      window_messages: b.window_messages !== undefined ? Number(b.window_messages) : cur.window_messages,
+      summarize_middle: b.summarize_middle !== undefined ? !!b.summarize_middle : cur.summarize_middle,
+      summary_model: b.summary_model !== undefined ? String(b.summary_model) : cur.summary_model,
+    };
+    saveCompressionConfig(next);
+    return reply.send(next);
   });
 
   // 数据库文件大小等系统信息

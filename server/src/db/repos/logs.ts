@@ -8,8 +8,8 @@ export function insertRequest(r: RequestRecord): void {
     .prepare(
       `INSERT INTO requests
        (id, api_key_id, protocol, endpoint, model_requested, model_used, provider_id, tier_id, tier_source, conversation_id, status, error,
-        prompt_tokens, completion_tokens, total_tokens, cache_read_tokens, cache_creation_tokens, cost, latency_ms, first_token_ms, upstream_protocol, request_json, response_json, client_ip, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        prompt_tokens, completion_tokens, total_tokens, cache_read_tokens, cache_creation_tokens, cost, latency_ms, first_token_ms, upstream_protocol, input_tokens_before, input_tokens_after, request_json, response_json, client_ip, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       r.id,
@@ -33,6 +33,8 @@ export function insertRequest(r: RequestRecord): void {
       r.latency_ms,
       r.first_token_ms ?? null,
       r.upstream_protocol ?? null,
+      r.input_tokens_before ?? null,
+      r.input_tokens_after ?? null,
       r.request_json,
       r.response_json,
       r.client_ip,
@@ -56,6 +58,8 @@ export function updateRequest(
       | "latency_ms"
       | "first_token_ms"
       | "upstream_protocol"
+      | "input_tokens_before"
+      | "input_tokens_after"
       | "response_json"
       | "conversation_id"
       | "model_used"
@@ -290,6 +294,21 @@ export function conversationModels(
   return map;
 }
 
+/** 批量获取若干对话各自消耗的总 token（输入+输出） */
+export function conversationTokens(conversationIds: string[]): Record<string, number> {
+  if (conversationIds.length === 0) return {};
+  const placeholders = conversationIds.map(() => "?").join(",");
+  const rows = getDb()
+    .prepare(
+      `SELECT conversation_id, COALESCE(SUM(prompt_tokens + completion_tokens), 0) AS tokens
+       FROM requests WHERE conversation_id IN (${placeholders}) GROUP BY conversation_id`,
+    )
+    .all(...conversationIds) as { conversation_id: string; tokens: number }[];
+  const map: Record<string, number> = {};
+  for (const row of rows) map[row.conversation_id] = row.tokens;
+  return map;
+}
+
 // ---------- Stats ----------
 
 export function statsTotals(): {
@@ -325,6 +344,24 @@ export function statsTotals(): {
     errors: number;
   };
   return row;
+}
+
+/** 全局压缩统计：节省的 token、不压缩时的总 token、压缩率 */
+export function statsCompression(): {
+  saved_tokens: number;
+  uncompressed_tokens: number;
+  ratio: number;
+} {
+  const row = getDb()
+    .prepare(
+      `SELECT COALESCE(SUM(prompt_tokens),0) AS prompt,
+              COALESCE(SUM(MAX(0, COALESCE(input_tokens_before,0) - COALESCE(input_tokens_after,0))),0) AS saved
+       FROM requests`,
+    )
+    .get() as { prompt: number; saved: number };
+  const uncompressed = row.prompt + row.saved;
+  const ratio = uncompressed > 0 ? row.saved / uncompressed : 0;
+  return { saved_tokens: row.saved, uncompressed_tokens: uncompressed, ratio };
 }
 
 export function statsDaily(days: number): { day: string; requests: number; tokens: number; cost: number }[] {

@@ -181,6 +181,11 @@ export const migrations: string[] = [
     created_at INTEGER NOT NULL
   );
   `,
+  // v8 —— 上下文压缩：记录压缩前/后的消息 token 估算
+  `
+  ALTER TABLE requests ADD COLUMN input_tokens_before INTEGER;
+  ALTER TABLE requests ADD COLUMN input_tokens_after INTEGER;
+  `,
 ];
 
 export const DEFAULT_TIERS: { id: string; name: string; description: string; sort: number }[] = [

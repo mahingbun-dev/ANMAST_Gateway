@@ -86,6 +86,7 @@ export interface TimeseriesPoint {
   cache_write: number;
   completion: number;
   cost: number;
+  uncompressed: number;
 }
 
 export function usageTimeseries(granularity: Granularity, f: UsageFilter): TimeseriesPoint[] {
@@ -99,7 +100,8 @@ export function usageTimeseries(granularity: Granularity, f: UsageFilter): Times
                       COALESCE(SUM(cache_read_tokens),0) AS cache_read,
                       COALESCE(SUM(cache_creation_tokens),0) AS cache_write,
                       COALESCE(SUM(completion_tokens),0) AS completion,
-                      COALESCE(SUM(cost),0) AS cost
+                      COALESCE(SUM(cost),0) AS cost,
+                      COALESCE(SUM(total_tokens + MAX(0, COALESCE(input_tokens_before,0) - COALESCE(input_tokens_after,0))),0) AS uncompressed
                FROM requests ${where}
                GROUP BY bucket ORDER BY bucket ASC`;
   return getDb().prepare(sql).all(...params) as TimeseriesPoint[];

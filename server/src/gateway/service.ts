@@ -26,6 +26,7 @@ import {
 } from "./respond.js";
 import { logger } from "../logger.js";
 import { startLiveStream, updateLiveStream, finishLiveStream, markActive, markDone } from "./live.js";
+import { compressMessages, getCompressionConfig } from "./compress.js";
 
 export type GatewayResult =
   | { type: "json"; statusCode: number; headers: Record<string, string>; body: unknown }
@@ -278,6 +279,17 @@ export async function processChat(input: ProcessInput): Promise<GatewayResult> {
   const conversationId = parsed.conversationId || genId("conv");
   markActive(requestId);
 
+  // 0. 上下文压缩（方案 E：锚点 + 近期 + 中间摘要/丢弃）
+  let inputTokensBefore: number | null = null;
+  let inputTokensAfter: number | null = null;
+  const compCfg = getCompressionConfig();
+  if (compCfg.enabled) {
+    const cr = await compressMessages(parsed.messages, compCfg);
+    parsed.messages = cr.messages;
+    inputTokensBefore = cr.beforeTokens;
+    inputTokensAfter = cr.afterTokens;
+  }
+
   // 1. 路由解析
   const isDirect =
     !!parsed.model && parsed.model !== "auto" && parsed.model !== "router" &&
@@ -373,6 +385,8 @@ export async function processChat(input: ProcessInput): Promise<GatewayResult> {
     latency_ms: 0,
     first_token_ms: null,
     upstream_protocol: null,
+    input_tokens_before: inputTokensBefore,
+    input_tokens_after: inputTokensAfter,
     request_json: safeJson(input.rawBody),
     response_json: null,
     client_ip: clientIp,

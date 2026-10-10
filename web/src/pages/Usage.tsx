@@ -24,6 +24,7 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip as RTooltip,
+  Legend,
 } from "recharts";
 import { api } from "../api";
 import { useCurrency } from "../currency";
@@ -296,7 +297,15 @@ export default function Usage() {
             <XAxis dataKey="bucket" tick={{ fontSize: 12 }} />
             <YAxis tick={{ fontSize: 12 }} width={70} />
             <RTooltip />
-            <Line type="monotone" dataKey={metricMap[metric].key} name={metricMap[metric].label} stroke="#2563eb" dot={false} />
+            {metric === "tokens" ? (
+              <>
+                <Legend />
+                <Line type="monotone" dataKey="uncompressed" name="不压缩 Token" stroke="#d46b08" dot={false} />
+                <Line type="monotone" dataKey="tokens" name="压缩后 Token" stroke="#2563eb" dot={false} />
+              </>
+            ) : (
+              <Line type="monotone" dataKey={metricMap[metric].key} name={metricMap[metric].label} stroke="#2563eb" dot={false} />
+            )}
           </LineChart>
         </ResponsiveContainer>
       </Card>

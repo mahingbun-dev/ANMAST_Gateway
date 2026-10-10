@@ -10,6 +10,7 @@ interface Conversation {
   model: string;
   message_count: number;
   updated_at: number;
+  tokens: number;
   models: { model: string; tier_id: string | null; tier_name: string | null }[];
 }
 interface Message {
@@ -136,6 +137,11 @@ export default function Conversations() {
               ),
           },
           { title: "消息数", dataIndex: "message_count" },
+          {
+            title: "Token 消耗",
+            dataIndex: "tokens",
+            render: (v: number) => (v ?? 0).toLocaleString(),
+          },
           {
             title: "更新时间",
             dataIndex: "updated_at",

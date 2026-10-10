@@ -38,6 +38,7 @@ interface Stats {
     month_cost: number;
     last_used_at: number | null;
   }[];
+  compression: { saved_tokens: number; uncompressed_tokens: number; ratio: number };
 }
 
 export default function Dashboard() {
@@ -132,6 +133,25 @@ export default function Dashboard() {
           </Col>
           <Col span={6}>
             <Statistic title="输出" value={t?.completion_tokens ?? 0} />
+          </Col>
+        </Row>
+      </Card>
+
+      <Card title="上下文压缩" loading={loading}>
+        <Row gutter={16}>
+          <Col span={8}>
+            <Statistic
+              title="累计压缩率"
+              value={stats?.compression ? (stats.compression.ratio * 100).toFixed(1) : 0}
+              suffix="%"
+              valueStyle={{ color: (stats?.compression?.ratio ?? 0) > 0 ? "#389e0d" : undefined }}
+            />
+          </Col>
+          <Col span={8}>
+            <Statistic title="已节省 Token" value={stats?.compression?.saved_tokens ?? 0} />
+          </Col>
+          <Col span={8}>
+            <Statistic title="不压缩时总 Token" value={stats?.compression?.uncompressed_tokens ?? 0} />
           </Col>
         </Row>
       </Card>

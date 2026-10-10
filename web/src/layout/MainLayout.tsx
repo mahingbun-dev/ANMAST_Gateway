@@ -32,6 +32,7 @@ const items = [
   { key: "/keys", icon: <KeyOutlined />, label: "API 密钥" },
   { key: "/logs", icon: <FileTextOutlined />, label: "调用记录" },
   { key: "/conversations", icon: <MessageOutlined />, label: "对话历史" },
+  { key: "/compression", icon: <ToolOutlined />, label: "上下文压缩" },
   { key: "/settings", icon: <SettingOutlined />, label: "设置" },
 ];
 

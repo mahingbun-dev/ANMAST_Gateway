@@ -114,6 +114,8 @@ export interface RequestRecord {
   latency_ms: number;
   first_token_ms: number | null;
   upstream_protocol: string | null;
+  input_tokens_before: number | null;
+  input_tokens_after: number | null;
   request_json: string | null;
   response_json: string | null;
   client_ip: string | null;
