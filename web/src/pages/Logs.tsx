@@ -105,14 +105,21 @@ export default function Logs() {
           placeholder="搜索模型 / 请求ID / 会话ID"
           allowClear
           style={{ width: 280 }}
-          onSearch={() => load(1)}
+          onChange={(e) => setSearch(e.target.value)}
+          onSearch={() => {
+            setPage(1);
+            load(1);
+          }}
         />
         <Select
           placeholder="状态"
           allowClear
           style={{ width: 120 }}
           value={status}
-          onChange={(v) => setStatus(v)}
+          onChange={(v) => {
+            setStatus(v);
+            setPage(1);
+          }}
           options={[
             { value: "success", label: "success" },
             { value: "error", label: "error" },
@@ -125,13 +132,22 @@ export default function Logs() {
           allowClear
           style={{ width: 140 }}
           value={protocol}
-          onChange={(v) => setProtocol(v)}
+          onChange={(v) => {
+            setProtocol(v);
+            setPage(1);
+          }}
           options={[
             { value: "openai", label: "OpenAI" },
             { value: "anthropic", label: "Anthropic" },
           ]}
         />
-        <Button type="primary" onClick={() => load(1)}>
+        <Button
+          type="primary"
+          onClick={() => {
+            setPage(1);
+            load(1);
+          }}
+        >
           查询
         </Button>
         <Button icon={<ReloadOutlined />} onClick={() => load(page, pageSize)}>

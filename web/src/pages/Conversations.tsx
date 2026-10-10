@@ -91,9 +91,19 @@ export default function Conversations() {
           placeholder="搜索对话标题/ID"
           allowClear
           style={{ width: 300 }}
-          onSearch={() => load(1)}
+          onChange={(e) => setSearch(e.target.value)}
+          onSearch={() => {
+            setPage(1);
+            load(1);
+          }}
         />
-        <Button type="primary" onClick={() => load(1)}>
+        <Button
+          type="primary"
+          onClick={() => {
+            setPage(1);
+            load(1);
+          }}
+        >
           查询
         </Button>
         <Button icon={<ReloadOutlined />} onClick={() => load(page)}>
