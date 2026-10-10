@@ -511,6 +511,7 @@ export function registerAdminRoutes(app: FastifyInstance): void {
       monthly_limit_tokens?: number | null;
       skill_ids?: string;
       mcp_server_ids?: string;
+      compression_enabled?: number;
     } = {};
     if (b.name !== undefined) patch.name = String(b.name);
     if (b.enabled !== undefined) patch.enabled = b.enabled ? 1 : 0;
@@ -524,6 +525,8 @@ export function registerAdminRoutes(app: FastifyInstance): void {
       patch.mcp_server_ids = JSON.stringify(
         Array.isArray(b.mcp_server_ids) ? b.mcp_server_ids.map(String) : [],
       );
+    if (b.compression_enabled !== undefined)
+      patch.compression_enabled = b.compression_enabled ? 1 : 0;
     const k = updateApiKey(id, patch);
     if (!k) return reply.code(404).send({ error: "密钥不存在" });
     return reply.send({ ...k, key_hash: undefined });

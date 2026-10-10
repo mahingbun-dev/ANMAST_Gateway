@@ -52,10 +52,18 @@ export function estimateMessagesTokens(messages: ChatMessage[]): number {
 async function summarizeMiddle(messages: ChatMessage[], summaryModel: string): Promise<string> {
   const models = listEnabledModels();
   if (!models.length) return "";
-  let target =
-    models.find((m) => m.model.name === summaryModel || m.model.id === summaryModel || m.model.display_name === summaryModel) ??
-    models.find((m) => m.model.usage === "normal") ??
-    models[0];
+  let target = models.find(
+    (m) =>
+      summaryModel && (m.model.name === summaryModel || m.model.id === summaryModel || m.model.display_name === summaryModel),
+  );
+  if (!target) {
+    // 留空：使用复杂度判定模型
+    const routerId = getSetting<string>("router_model_id");
+    if (routerId) {
+      target = models.find((m) => m.model.id === routerId || m.model.name === routerId);
+    }
+  }
+  if (!target) target = models.find((m) => m.model.usage === "normal") ?? models[0];
   if (!target) return "";
 
   const text = messages

@@ -279,11 +279,13 @@ export async function processChat(input: ProcessInput): Promise<GatewayResult> {
   const conversationId = parsed.conversationId || genId("conv");
   markActive(requestId);
 
-  // 0. 上下文压缩（方案 E：锚点 + 近期 + 中间摘要/丢弃）
+  // 0. 上下文压缩（头部锚点 + 近期窗口 + 中间摘要/丢弃；按 API Key 启用）
+  const keyCfg = apiKeyId ? getApiKey(apiKeyId) : undefined;
   let inputTokensBefore: number | null = null;
   let inputTokensAfter: number | null = null;
   const compCfg = getCompressionConfig();
-  if (compCfg.enabled) {
+  const keyCompressionOn = keyCfg ? keyCfg.compression_enabled !== 0 : true;
+  if (compCfg.enabled && keyCompressionOn) {
     const cr = await compressMessages(parsed.messages, compCfg);
     parsed.messages = cr.messages;
     inputTokensBefore = cr.beforeTokens;
@@ -309,7 +311,6 @@ export async function processChat(input: ProcessInput): Promise<GatewayResult> {
   if (explicitTier) target.usedComplexity = explicitTier;
 
   // 2. Skill 与工具（含按 API Key 配置的 Skill / MCP 允许列表）
-  const keyCfg = apiKeyId ? getApiKey(apiKeyId) : undefined;
   const keySkillIds = keyCfg ? parseStringArray(keyCfg.skill_ids) : [];
   const keyMcpIds = keyCfg ? parseStringArray(keyCfg.mcp_server_ids) : [];
 

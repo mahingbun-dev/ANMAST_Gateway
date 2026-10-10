@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Card, Form, InputNumber, Switch, Input, Button, message, Typography, Space, Alert } from "antd";
+import { Card, Form, InputNumber, Switch, Select, Button, message, Typography, Space, Alert } from "antd";
 import { api } from "../api";
 
 interface CompressionConfig {
@@ -14,12 +14,14 @@ export default function Compression() {
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
   const [enabled, setEnabled] = useState(false);
+  const [modelOpts, setModelOpts] = useState<{ name: string; display_name: string }[]>([]);
 
   useEffect(() => {
     api.get<CompressionConfig>("/api/compression").then((c) => {
       form.setFieldsValue(c);
       setEnabled(c.enabled);
     });
+    api.get<{ name: string; display_name: string }[]>("/api/models").then((ms) => setModelOpts(ms));
   }, [form]);
 
   const save = async () => {
@@ -41,7 +43,7 @@ export default function Compression() {
         <Alert
           type="info"
           showIcon
-          message="方案 E：头部锚点 + 近期窗口 + 中间摘要/丢弃"
+          message="头部锚点 + 近期窗口 + 中间摘要/丢弃"
           description={
             <Typography.Paragraph style={{ marginBottom: 0 }}>
               压缩在网关路由前对历史消息生效：保留开头的锚点消息（对应注意力锚点，稳定前缀可命中缓存）与最近的消息原文，
@@ -81,8 +83,14 @@ export default function Compression() {
           >
             <Switch />
           </Form.Item>
-          <Form.Item name="summary_model" label="摘要模型（留空则自动选第一个可路由模型）">
-            <Input placeholder="如 glm-5.3-flash" />
+          <Form.Item name="summary_model" label="摘要模型" extra="留空则自动使用复杂度判定模型">
+            <Select
+              allowClear
+              showSearch
+              optionFilterProp="label"
+              placeholder="留空 = 使用复杂度判定模型"
+              options={modelOpts.map((m) => ({ value: m.name, label: m.display_name || m.name }))}
+            />
           </Form.Item>
           <Button type="primary" loading={loading} onClick={save}>
             保存

@@ -186,6 +186,10 @@ export const migrations: string[] = [
   ALTER TABLE requests ADD COLUMN input_tokens_before INTEGER;
   ALTER TABLE requests ADD COLUMN input_tokens_after INTEGER;
   `,
+  // v9 —— 按 API Key 启用/关闭上下文压缩（默认启用）
+  `
+  ALTER TABLE api_keys ADD COLUMN compression_enabled INTEGER NOT NULL DEFAULT 1;
+  `,
 ];
 
 export const DEFAULT_TIERS: { id: string; name: string; description: string; sort: number }[] = [

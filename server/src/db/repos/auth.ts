@@ -44,6 +44,7 @@ export function updateApiKey(
     monthly_limit_tokens?: number | null;
     skill_ids?: string;
     mcp_server_ids?: string;
+    compression_enabled?: number;
   },
 ): ApiKey | undefined {
   const existing = getApiKey(id);
@@ -51,7 +52,7 @@ export function updateApiKey(
   const next = { ...existing, ...patch };
   getDb()
     .prepare(
-      "UPDATE api_keys SET name=?, enabled=?, monthly_limit_tokens=?, skill_ids=?, mcp_server_ids=? WHERE id=?",
+      "UPDATE api_keys SET name=?, enabled=?, monthly_limit_tokens=?, skill_ids=?, mcp_server_ids=?, compression_enabled=? WHERE id=?",
     )
     .run(
       next.name,
@@ -59,6 +60,7 @@ export function updateApiKey(
       next.monthly_limit_tokens ?? null,
       next.skill_ids,
       next.mcp_server_ids,
+      next.compression_enabled,
       id,
     );
   return getApiKey(id);

@@ -27,6 +27,7 @@ interface ApiKey {
   monthly_limit_tokens: number | null;
   skill_ids: string;
   mcp_server_ids: string;
+  compression_enabled: number;
   created_at: number;
   last_used_at: number | null;
 }
@@ -79,7 +80,7 @@ export default function ApiKeys() {
     setEditing(null);
     setCreatedKey(null);
     form.resetFields();
-    form.setFieldsValue({ enabled: true, skill_ids: [], mcp_server_ids: [] });
+    form.setFieldsValue({ enabled: true, compression_enabled: true, skill_ids: [], mcp_server_ids: [] });
     setOpen(true);
   };
   const openEdit = (k: ApiKey) => {
@@ -88,6 +89,7 @@ export default function ApiKeys() {
     form.setFieldsValue({
       name: k.name,
       enabled: !!k.enabled,
+      compression_enabled: !!k.compression_enabled,
       monthly_limit_tokens: k.monthly_limit_tokens ?? null,
       skill_ids: parseArr(k.skill_ids),
       mcp_server_ids: parseArr(k.mcp_server_ids),
@@ -100,6 +102,7 @@ export default function ApiKeys() {
     const body = {
       name: v.name,
       enabled: v.enabled,
+      compression_enabled: v.compression_enabled,
       monthly_limit_tokens: v.monthly_limit_tokens ?? null,
       skill_ids: v.skill_ids ?? [],
       mcp_server_ids: v.mcp_server_ids ?? [],
@@ -114,6 +117,16 @@ export default function ApiKeys() {
         setCreatedKey(r.key);
         message.success("密钥已创建");
       }
+      load();
+    } catch (e) {
+      message.error((e as Error).message);
+    }
+  };
+
+  const toggleCompression = async (k: ApiKey) => {
+    try {
+      await api.put(`/api/keys/${k.id}`, { compression_enabled: k.compression_enabled ? 0 : 1 });
+      message.success(k.compression_enabled ? `已关闭「${k.name}」的上下文压缩` : `已启用「${k.name}」的上下文压缩`);
       load();
     } catch (e) {
       message.error((e as Error).message);
@@ -186,6 +199,18 @@ export default function ApiKeys() {
             title: "状态",
             dataIndex: "enabled",
             render: (v: number) => <Tag color={v ? "green" : "default"}>{v ? "启用" : "停用"}</Tag>,
+          },
+          {
+            title: "上下文压缩",
+            dataIndex: "compression_enabled",
+            render: (v: number, r: ApiKey) => (
+              <Switch
+                checked={v !== 0}
+                checkedChildren="开"
+                unCheckedChildren="关"
+                onChange={() => toggleCompression(r)}
+              />
+            ),
           },
           {
             title: "创建时间",
@@ -271,6 +296,14 @@ export default function ApiKeys() {
               />
             </Form.Item>
             <Form.Item name="enabled" label="启用" valuePropName="checked">
+              <Switch />
+            </Form.Item>
+            <Form.Item
+              name="compression_enabled"
+              label="上下文压缩"
+              valuePropName="checked"
+              extra="开启后该密钥的请求会进行上下文压缩（需全局压缩已开启）"
+            >
               <Switch />
             </Form.Item>
           </Form>
