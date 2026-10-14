@@ -131,10 +131,34 @@ export default function Settings() {
     }
   };
 
+  const runUpdateNow = async () => {
+    setUpdating(true);
+    try {
+      await api.post("/api/update/run", {});
+      message.success("更新完成，服务即将重启");
+      setTimeout(() => (window.location.href = "/"), 3000);
+    } catch (e) {
+      message.error((e as Error).message);
+    } finally {
+      setUpdating(false);
+    }
+  };
+
   const doUpdate = () => {
-    // 先要求输入备份密码，备份成功后再升级
-    setUpdateBackupPwd("");
-    setUpdateBackupPwdModal(true);
+    // 主动询问是否需要备份
+    Modal.confirm({
+      title: "立即更新",
+      content: `将更新到版本 ${updateInfo?.newVersion ?? ""}。是否需要先备份当前数据？`,
+      okText: "备份并更新",
+      cancelText: "直接更新",
+      onOk: () => {
+        setUpdateBackupPwd("");
+        setUpdateBackupPwdModal(true);
+      },
+      onCancel: () => {
+        runUpdateNow();
+      },
+    });
   };
 
   const confirmUpdate = async () => {
