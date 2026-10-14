@@ -830,7 +830,7 @@ export function registerAdminRoutes(app: FastifyInstance): void {
     }
   });
 
-  app.post("/api/system/restore", async (req, reply) => {
+  app.post("/api/system/restore", { bodyLimit: 512 * 1024 * 1024 }, async (req, reply) => {
     const b = (req.body ?? {}) as { data?: string };
     if (!b.data) return reply.code(400).send({ error: "缺少备份数据" });
     try {

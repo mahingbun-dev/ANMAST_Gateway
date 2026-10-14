@@ -269,6 +269,21 @@ export default function Settings() {
         </Descriptions>
 
         <Alert
+          type="success"
+          showIcon
+          style={{ marginTop: 12 }}
+          message="OpenAI 兼容应用只需填 Base URL 到 /v1 即可"
+          description={
+            <Typography.Paragraph style={{ marginBottom: 0 }}>
+              多数 OpenAI 兼容应用（如 Open WebUI、Chatbox 等）配置时 Base URL 填 <Typography.Text code>{base}/v1</Typography.Text>{" "}
+              即可正常获取模型与对话：它们会自动访问 <Typography.Text code>/v1/models</Typography.Text>（列模型）与{" "}
+              <Typography.Text code>/v1/chat/completions</Typography.Text>（对话），这两个端点网关都已提供。
+              统一入口 <Typography.Text code>/v1/chat</Typography.Text> 是额外提供的「自动判断协议」端点，适用于需要同时接入 OpenAI 与 Anthropic 两类客户端的场景。
+            </Typography.Paragraph>
+          }
+        />
+
+        <Alert
           type="warning"
           showIcon
           style={{ marginTop: 12 }}
