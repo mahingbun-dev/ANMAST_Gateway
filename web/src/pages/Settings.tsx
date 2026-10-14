@@ -28,6 +28,15 @@ interface SystemInfo {
   uptime: number;
 }
 
+interface UpdateInfo {
+  hasUpdate: boolean;
+  currentVersion: string;
+  newVersion: string | null;
+  changes: string[];
+  source: string | null;
+  error?: string;
+}
+
 export default function Settings() {
   const [sys, setSys] = useState<SystemInfo | null>(null);
   const [loading, setLoading] = useState(false);
@@ -36,6 +45,9 @@ export default function Settings() {
   const [cur, setCur] = useState<"CNY" | "USD">(currency);
   const [rateVal, setRateVal] = useState(rate);
   const fileRef = useRef<HTMLInputElement>(null);
+  const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
+  const [updating, setUpdating] = useState(false);
 
   useEffect(() => {
     setCur(currency);
@@ -88,6 +100,38 @@ export default function Settings() {
           okType: "danger",
           onOk: () => onOk(),
         });
+      },
+    });
+  };
+
+  const checkUpdate = async () => {
+    setCheckingUpdate(true);
+    try {
+      const r = await api.get<UpdateInfo>("/api/update/check");
+      setUpdateInfo(r);
+    } catch (e) {
+      message.error((e as Error).message);
+    } finally {
+      setCheckingUpdate(false);
+    }
+  };
+
+  const doUpdate = () => {
+    Modal.confirm({
+      title: "立即更新",
+      content: `将更新到版本 ${updateInfo?.newVersion ?? ""}，更新期间服务会短暂重启。是否继续？`,
+      okText: "更新",
+      onOk: async () => {
+        setUpdating(true);
+        try {
+          await api.post("/api/update/run", {});
+          message.success("更新完成，服务即将重启");
+          setTimeout(() => (window.location.href = "/"), 2500);
+        } catch (e) {
+          message.error((e as Error).message);
+        } finally {
+          setUpdating(false);
+        }
       },
     });
   };
@@ -385,6 +429,53 @@ curl ${base}/v1/chat/completions \\
               恢复出厂设置
             </Button>
           </Space>
+        </Space>
+      </Card>
+
+      <Card title="系统更新">
+        <Space direction="vertical" style={{ width: "100%" }}>
+          <Typography.Paragraph type="secondary" style={{ margin: 0 }}>
+            每日自动检测更新（Gitea 优先、GitHub 备用）；检测到新版本后，请在此确认后手动更新。
+          </Typography.Paragraph>
+          <Space>
+            <Button loading={checkingUpdate} onClick={checkUpdate}>
+              检查更新
+            </Button>
+            <Button type="primary" loading={updating} disabled={!updateInfo?.hasUpdate} onClick={doUpdate}>
+              立即更新
+            </Button>
+          </Space>
+          {updateInfo && (
+            <Alert
+              type={updateInfo.hasUpdate ? "warning" : "success"}
+              showIcon
+              message={
+                updateInfo.error
+                  ? updateInfo.error
+                  : updateInfo.hasUpdate
+                    ? `发现新版本 ${updateInfo.newVersion}`
+                    : `已是最新版本（当前 ${updateInfo.currentVersion}）`
+              }
+              description={
+                updateInfo.hasUpdate ? (
+                  <div>
+                    <div>当前版本：{updateInfo.currentVersion}</div>
+                    <div>新版本：{updateInfo.newVersion}（来源：{updateInfo.source === "github" ? "GitHub" : "Gitea"}）</div>
+                    {updateInfo.changes.length > 0 && (
+                      <div style={{ marginTop: 8 }}>
+                        <Typography.Text strong>本次更新内容：</Typography.Text>
+                        <ul style={{ margin: "4px 0 0", paddingLeft: 20 }}>
+                          {updateInfo.changes.map((c, i) => (
+                            <li key={i}>{c}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                ) : undefined
+              }
+            />
+          )}
         </Space>
       </Card>
 

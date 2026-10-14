@@ -12,6 +12,7 @@ import { registerUnifiedRoute } from "./api/unified.js";
 import { registerAdminRoutes } from "./api/admin.js";
 import { closeAll } from "./mcp/manager.js";
 import { cleanupExpiredSessions } from "./db/repos/auth.js";
+import { runDailyCheck } from "./updater.js";
 
 async function main(): Promise<void> {
   setLogLevel(config.logLevel);
@@ -98,6 +99,12 @@ async function main(): Promise<void> {
   }
   logger.info(`OpenAI 兼容端点：http://127.0.0.1:${config.port}/v1/chat/completions`);
   logger.info(`Anthropic 兼容端点：http://127.0.0.1:${config.port}/v1/messages`);
+
+  // 每日定时检测更新（仅检测，不自动更新）
+  runDailyCheck();
+  setInterval(() => {
+    runDailyCheck();
+  }, 24 * 60 * 60 * 1000);
 }
 
 main().catch((e) => {

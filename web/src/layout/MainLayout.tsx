@@ -1,4 +1,5 @@
-import { Layout, Menu, Typography, Button, Space, Switch, InputNumber } from "antd";
+import { useEffect, useState } from "react";
+import { Layout, Menu, Typography, Button, Space, Switch, InputNumber, Modal } from "antd";
 import {
   DashboardOutlined,
   BarChartOutlined,
@@ -16,6 +17,7 @@ import {
 import { Outlet, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../auth";
 import { useRefresh } from "../refresh";
+import { api } from "../api";
 import Assistant from "../components/Assistant";
 import { CurrencyProvider } from "../currency";
 
@@ -41,6 +43,29 @@ export default function MainLayout() {
   const location = useLocation();
   const { logout, username } = useAuth();
   const { enabled, setEnabled, sec, setSec } = useRefresh();
+  const [updateModal, setUpdateModal] = useState<{
+    currentVersion: string;
+    newVersion: string;
+    changes: string[];
+  } | null>(null);
+
+  // 登录后检查更新，有更新弹窗提示
+  useEffect(() => {
+    api
+      .get<{ hasUpdate: boolean; currentVersion: string; newVersion: string; changes: string[]; error?: string }>(
+        "/api/update/check",
+      )
+      .then((r) => {
+        if (r.hasUpdate) {
+          setUpdateModal({
+            currentVersion: r.currentVersion,
+            newVersion: r.newVersion ?? "",
+            changes: r.changes ?? [],
+          });
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const selectedKey = items
     .map((i) => i.key)
@@ -119,6 +144,36 @@ export default function MainLayout() {
         </Content>
       </Layout>
       <Assistant />
+      <Modal
+        title="发现新版本"
+        open={!!updateModal}
+        onCancel={() => setUpdateModal(null)}
+        footer={[
+          <Button key="ok" type="primary" onClick={() => setUpdateModal(null)}>
+            知道了
+          </Button>,
+          <Button key="go" onClick={() => { setUpdateModal(null); navigate("/settings"); }}>
+            去更新
+          </Button>,
+        ]}
+      >
+        {updateModal && (
+          <div>
+            <p>当前版本：<b>{updateModal.currentVersion}</b></p>
+            <p>新版本：<b>{updateModal.newVersion}</b></p>
+            {updateModal.changes.length > 0 && (
+              <div>
+                <p style={{ marginBottom: 4 }}>本次更新内容：</p>
+                <ul style={{ paddingLeft: 20, margin: 0 }}>
+                  {updateModal.changes.map((c, i) => (
+                    <li key={i}>{c}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        )}
+      </Modal>
     </Layout>
     </CurrencyProvider>
   );

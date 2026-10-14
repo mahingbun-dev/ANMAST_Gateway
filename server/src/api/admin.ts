@@ -64,6 +64,7 @@ import { toReadable } from "../lib/stream.js";
 import type { ChatMessage, Provider } from "../types.js";
 import { getGlobalLiveSpeed } from "../gateway/live.js";
 import { getCompressionConfig, saveCompressionConfig, type CompressionConfig } from "../gateway/compress.js";
+import { checkForUpdate, runUpdate } from "../updater.js";
 import {
   usageSummary,
   usageTimeseries,
@@ -768,6 +769,23 @@ export function registerAdminRoutes(app: FastifyInstance): void {
     };
     saveCompressionConfig(next);
     return reply.send(next);
+  });
+
+  // ---------- 系统更新 ----------
+  app.get("/api/update/check", async () => {
+    return checkForUpdate();
+  });
+
+  app.post("/api/update/run", async (req, reply) => {
+    try {
+      const r = await runUpdate();
+      if (!r.ok) return reply.code(500).send({ error: r.error });
+      // 更新成功：延迟重启（launchd KeepAlive 会自动拉起）
+      setTimeout(() => process.exit(0), 1500);
+      return reply.send({ ok: true, message: "更新成功，服务即将重启" });
+    } catch (e) {
+      return reply.code(500).send({ error: (e as Error).message });
+    }
   });
 
   // 数据库文件大小等系统信息
