@@ -49,6 +49,8 @@ export default function Settings() {
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [updating, setUpdating] = useState(false);
+  const [updateBackupPwdModal, setUpdateBackupPwdModal] = useState(false);
+  const [updateBackupPwd, setUpdateBackupPwd] = useState("");
   const [backupPwdModal, setBackupPwdModal] = useState(false);
   const [backupPwd, setBackupPwd] = useState("");
   const [restorePwdModal, setRestorePwdModal] = useState(false);
@@ -130,23 +132,52 @@ export default function Settings() {
   };
 
   const doUpdate = () => {
-    Modal.confirm({
-      title: "立即更新",
-      content: `将更新到版本 ${updateInfo?.newVersion ?? ""}，更新期间服务会短暂重启。是否继续？`,
-      okText: "更新",
-      onOk: async () => {
-        setUpdating(true);
-        try {
-          await api.post("/api/update/run", {});
-          message.success("更新完成，服务即将重启");
-          setTimeout(() => (window.location.href = "/"), 2500);
-        } catch (e) {
-          message.error((e as Error).message);
-        } finally {
-          setUpdating(false);
-        }
-      },
-    });
+    // 先要求输入备份密码，备份成功后再升级
+    setUpdateBackupPwd("");
+    setUpdateBackupPwdModal(true);
+  };
+
+  const confirmUpdate = async () => {
+    if (!updateBackupPwd) {
+      message.warning("请输入备份密码");
+      return;
+    }
+    setUpdateBackupPwdModal(false);
+    setUpdating(true);
+    try {
+      // 1. 先备份（加密下载）
+      const token = getToken();
+      const res = await fetch("/api/system/backup", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ password: updateBackupPwd }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({} as { error?: string }));
+        message.error(`备份失败：${err.error || res.status}`);
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `anmast-backup-before-update-${dayjs().format("YYYYMMDD-HHmmss")}.bin`;
+      a.click();
+      URL.revokeObjectURL(url);
+
+      // 2. 备份完成后执行更新
+      await api.post("/api/update/run", {});
+      message.success("更新完成，服务即将重启");
+      setTimeout(() => (window.location.href = "/"), 3000);
+    } catch (e) {
+      message.error((e as Error).message);
+    } finally {
+      setUpdating(false);
+      setUpdateBackupPwd("");
+    }
   };
 
   const resetData = () =>
@@ -639,6 +670,30 @@ curl ${base}/v1/chat/completions \\
           placeholder="备份密码"
           value={backupPwd}
           onChange={(e) => setBackupPwd(e.target.value)}
+        />
+      </Modal>
+
+      {/* 更新前备份密码 */}
+      <Modal
+        title="更新前备份"
+        open={updateBackupPwdModal}
+        onOk={confirmUpdate}
+        onCancel={() => {
+          setUpdateBackupPwdModal(false);
+          setUpdateBackupPwd("");
+        }}
+        okText="备份并更新"
+      >
+        <Alert
+          type="warning"
+          showIcon
+          style={{ marginBottom: 12 }}
+          message={`将先备份当前数据，再更新到版本 ${updateInfo?.newVersion ?? ""}。请输入备份密码。`}
+        />
+        <Input.Password
+          placeholder="备份密码"
+          value={updateBackupPwd}
+          onChange={(e) => setUpdateBackupPwd(e.target.value)}
         />
       </Modal>
 

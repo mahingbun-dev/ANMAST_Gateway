@@ -1,6 +1,7 @@
 import { exec } from "node:child_process";
 import path from "node:path";
 import fs from "node:fs";
+import os from "node:os";
 import { fileURLToPath } from "node:url";
 import { logger } from "./logger.js";
 
@@ -173,9 +174,8 @@ export async function runUpdate(): Promise<{ ok: boolean; error?: string }> {
 
   // 2. 构建
   try {
-    const buildCmd = process.env.UPDATE_BUILD_CMD || "pnpm build";
-    const env = { ...process.env, PATH: `${path.dirname(process.execPath)}:${process.env.PATH ?? ""}` };
-    await runBuild(buildCmd, env);
+    const buildCmd = await resolveBuildCmd();
+    await runBuild(buildCmd);
   } catch (e) {
     // 构建失败 → 回滚
     if (beforeCommit) {
@@ -188,9 +188,35 @@ export async function runUpdate(): Promise<{ ok: boolean; error?: string }> {
   return { ok: true };
 }
 
-async function runBuild(cmd: string, env: NodeJS.ProcessEnv): Promise<void> {
+/** 在扩展 PATH 中查找可执行文件，找不到返回 null */
+function whichInPath(name: string): Promise<string | null> {
+  const extraDirs = [
+    path.dirname(process.execPath),
+    path.join(os.homedir(), ".local", "share", "pnpm"),
+    "/opt/homebrew/bin",
+    "/usr/local/bin",
+  ];
+  const PATH = [...extraDirs, process.env.PATH ?? ""].join(":");
+  return new Promise((resolve) => {
+    exec(`command -v ${name}`, { env: { ...process.env, PATH } }, (err, stdout) => {
+      resolve(err ? null : String(stdout).trim() || null);
+    });
+  });
+}
+
+/** 解析构建命令：优先 UPDATE_BUILD_CMD，其次在扩展 PATH 中找 pnpm/npm */
+async function resolveBuildCmd(): Promise<string> {
+  if (process.env.UPDATE_BUILD_CMD) return process.env.UPDATE_BUILD_CMD;
+  const pnpm = await whichInPath("pnpm");
+  if (pnpm) return `${pnpm} build`;
+  const npm = await whichInPath("npm");
+  if (npm) return `${npm} run build`;
+  return "pnpm build";
+}
+
+async function runBuild(cmd: string): Promise<void> {
   await new Promise<void>((resolve, reject) => {
-    exec(cmd, { cwd: REPO_ROOT, timeout: 600000, env }, (err) => {
+    exec(cmd, { cwd: REPO_ROOT, timeout: 600000, env: process.env }, (err) => {
       if (err) reject(err);
       else resolve();
     });

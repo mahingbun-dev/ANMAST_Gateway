@@ -34,6 +34,17 @@ fi
 NODE_BIN="$(readlink -f "$NODE_BIN")"
 echo "使用 Node：$NODE_BIN ($("$NODE_BIN" --version))"
 
+# 1.5 查找 pnpm（用于在线更新的构建）
+PNPM_BIN="$(command -v pnpm || true)"
+UPDATE_BUILD_CMD="pnpm build"
+if [[ -n "$PNPM_BIN" ]]; then
+  PNPM_BIN="$(readlink -f "$PNPM_BIN")"
+  UPDATE_BUILD_CMD="$PNPM_BIN build"
+  echo "使用 pnpm：$PNPM_BIN"
+else
+  echo "警告：未找到 pnpm，在线更新将使用默认 'pnpm build'（可能失败，建议安装 pnpm）" >&2
+fi
+
 # 2. 校验 node:sqlite 可用
 if ! "$NODE_BIN" -e "require('node:sqlite')" 2>/dev/null; then
   echo "错误：当前 Node 版本不支持内置 node:sqlite。请升级到 Node.js 23.4+ 或 24 LTS。" >&2
@@ -62,6 +73,7 @@ sed \
   -e "s#__PORT__#$PORT#g" \
   -e "s#__DATA_DIR__#$DATA_DIR#g" \
   -e "s#__ADMIN_PASSWORD__#$ADMIN_PASSWORD#g" \
+  -e "s#__UPDATE_BUILD_CMD__#$UPDATE_BUILD_CMD#g" \
   -e "s#__LOG_DIR__#$LOG_DIR#g" \
   "$PLIST_SRC" > "$PLIST_DST"
 
