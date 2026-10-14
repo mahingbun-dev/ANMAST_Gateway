@@ -50,3 +50,31 @@ export function safeEqual(a: string, b: string): boolean {
   if (ba.length !== bb.length) return false;
   return crypto.timingSafeEqual(ba, bb);
 }
+
+const BACKUP_MAGIC = "ANMT";
+
+/** 用密码加密缓冲区（AES-256-GCM，scrypt 派生密钥）。输出：magic + salt + iv + tag + 密文 */
+export function encryptBuffer(buf: Buffer, password: string): Buffer {
+  const salt = crypto.randomBytes(16);
+  const iv = crypto.randomBytes(12);
+  const key = crypto.scryptSync(password, salt, 32);
+  const cipher = crypto.createCipheriv("aes-256-gcm", key, iv);
+  const enc = Buffer.concat([cipher.update(buf), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  return Buffer.concat([Buffer.from(BACKUP_MAGIC), salt, iv, tag, enc]);
+}
+
+/** 用密码解密缓冲区；密码错误或格式不对时抛异常 */
+export function decryptBuffer(payload: Buffer, password: string): Buffer {
+  if (payload.length < 48 || payload.subarray(0, 4).toString() !== BACKUP_MAGIC) {
+    throw new Error("不是有效的加密备份文件");
+  }
+  const salt = payload.subarray(4, 20);
+  const iv = payload.subarray(20, 32);
+  const tag = payload.subarray(32, 48);
+  const enc = payload.subarray(48);
+  const key = crypto.scryptSync(password, salt, 32);
+  const decipher = crypto.createDecipheriv("aes-256-gcm", key, iv);
+  decipher.setAuthTag(tag);
+  return Buffer.concat([decipher.update(enc), decipher.final()]);
+}

@@ -53,7 +53,7 @@ import {
   conversationModels,
   conversationTokens,
 } from "../db/repos/logs.js";
-import { generateApiKey, hashPassword } from "../lib/crypto.js";
+import { generateApiKey, hashPassword, encryptBuffer, decryptBuffer } from "../lib/crypto.js";
 import { listServerTools, refreshServer } from "../mcp/manager.js";
 import { listProviderModelsAny, fetchModelContext, pingProvider } from "../providers/discovery.js";
 import type { UpstreamProtocol } from "../providers/index.js";
@@ -188,6 +188,26 @@ export function registerAdminRoutes(app: FastifyInstance): void {
     if (!ok) return reply.code(401).send({ error: "当前密码错误" });
     updateAdminPassword(admin.username, await hashPassword(newPassword));
     return reply.send({ ok: true });
+  });
+
+  // 保存免登录时长（需验证管理员密码）
+  app.put("/api/settings/session-timeout", async (req, reply) => {
+    const { hours, currentPassword } = (req.body ?? {}) as {
+      hours?: number;
+      currentPassword?: string;
+    };
+    if (hours === undefined || hours === null || isNaN(Number(hours))) {
+      return reply.code(400).send({ error: "缺少免登录时长" });
+    }
+    if (!currentPassword) return reply.code(400).send({ error: "请提供当前密码验证" });
+    const admin = getAdmin();
+    if (!admin) return reply.code(500).send({ error: "管理员不存在" });
+    const { verifyPassword } = await import("../lib/crypto.js");
+    const ok = await verifyPassword(currentPassword, admin.password_hash);
+    if (!ok) return reply.code(401).send({ error: "密码错误" });
+    const h = Number(hours);
+    setSetting("session_timeout_hours", h);
+    return reply.send({ ok: true, session_timeout_hours: h });
   });
 
   // ---------- 网页内 AI 配置助手（沙箱：仅内置配置 Skill，无工具/无用户 Skill） ----------
@@ -834,25 +854,34 @@ export function registerAdminRoutes(app: FastifyInstance): void {
   });
 
   // ---------- 备份 / 恢复 ----------
-  app.get("/api/system/backup", async (req, reply) => {
+  app.post("/api/system/backup", async (req, reply) => {
+    const b = (req.body ?? {}) as { password?: string };
+    if (!b.password) return reply.code(400).send({ error: "请提供备份密码" });
     try {
       const tmp = path.join(config.dataDir, `backup-${Date.now()}.db`);
       getDb().exec(`VACUUM INTO '${tmp.replace(/'/g, "''")}'`);
       const buf = fs.readFileSync(tmp);
       fs.rmSync(tmp, { force: true });
+      const enc = encryptBuffer(buf, b.password);
       reply.header("Content-Type", "application/octet-stream");
-      reply.header("Content-Disposition", `attachment; filename="anmast-backup-${new Date().toISOString().slice(0, 10)}.db"`);
-      return reply.send(buf);
+      reply.header("Content-Disposition", `attachment; filename="anmast-backup-${new Date().toISOString().slice(0, 10)}.bin"`);
+      return reply.send(enc);
     } catch (e) {
       return reply.code(500).send({ error: (e as Error).message });
     }
   });
 
   app.post("/api/system/restore", { bodyLimit: 512 * 1024 * 1024 }, async (req, reply) => {
-    const b = (req.body ?? {}) as { data?: string };
+    const b = (req.body ?? {}) as { data?: string; password?: string };
     if (!b.data) return reply.code(400).send({ error: "缺少备份数据" });
+    if (!b.password) return reply.code(400).send({ error: "请提供备份密码" });
     try {
-      const buf = Buffer.from(b.data, "base64");
+      let buf: Buffer;
+      try {
+        buf = decryptBuffer(Buffer.from(b.data, "base64"), b.password);
+      } catch {
+        return reply.code(400).send({ error: "备份密码错误，或文件不是有效的加密备份" });
+      }
       // 校验 SQLite 文件头
       if (buf.length < 16 || buf.toString("utf8", 0, 15) !== "SQLite format 3") {
         return reply.code(400).send({ error: "不是有效的 SQLite 备份文件" });

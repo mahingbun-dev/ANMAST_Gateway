@@ -1,4 +1,5 @@
 import { sha256, randomToken, verifyPassword } from "../lib/crypto.js";
+import { getSetting } from "../db/index.js";
 import {
   getApiKeyByHash,
   touchApiKey,
@@ -10,7 +11,13 @@ import {
 import { monthlyTokensByKey } from "../db/repos/logs.js";
 import { logger } from "../logger.js";
 
-const SESSION_TTL = 7 * 24 * 3600 * 1000; // 7 天
+const SESSION_TTL = 7 * 24 * 3600 * 1000; // 7 天（默认兜底）
+
+function sessionTtl(): number {
+  const hours = getSetting<number>("session_timeout_hours", 7 * 24) ?? 7 * 24;
+  if (hours <= 0) return SESSION_TTL; // 0 或负数视为默认
+  return hours * 3600 * 1000;
+}
 
 export type AuthResult =
   | { kind: "apikey"; id: string }
@@ -61,7 +68,7 @@ export async function adminLogin(
   const ok = await verifyPassword(password, admin.password_hash);
   if (!ok) return null;
   const token = randomToken(32);
-  createSession(sha256(token), Date.now() + SESSION_TTL);
+  createSession(sha256(token), Date.now() + sessionTtl());
   logger.info(`管理员 ${username} 登录成功`);
   return { token, username };
 }

@@ -13,6 +13,7 @@ import {
   InputNumber,
   Modal,
   Divider,
+  Progress,
 } from "antd";
 import { api, getToken } from "../api";
 import { useCurrency } from "../currency";
@@ -48,6 +49,18 @@ export default function Settings() {
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [updating, setUpdating] = useState(false);
+  const [backupPwdModal, setBackupPwdModal] = useState(false);
+  const [backupPwd, setBackupPwd] = useState("");
+  const [restorePwdModal, setRestorePwdModal] = useState(false);
+  const [restorePwd, setRestorePwd] = useState("");
+  const [restoreFile, setRestoreFile] = useState<File | null>(null);
+  const [restoring, setRestoring] = useState(false);
+  const [restoreProgress, setRestoreProgress] = useState(0);
+  const xhrRef = useRef<XMLHttpRequest | null>(null);
+  // 免登录时长
+  const [sessionHours, setSessionHours] = useState<number | null>(null);
+  const [sessionPwd, setSessionPwd] = useState("");
+  const [savingSession, setSavingSession] = useState(false);
 
   useEffect(() => {
     setCur(currency);
@@ -166,54 +179,133 @@ export default function Settings() {
       },
     );
 
-  const downloadBackup = async () => {
+  const doDownloadBackup = async () => {
+    if (!backupPwd) {
+      message.warning("请输入备份密码");
+      return;
+    }
+    setBackupPwdModal(false);
     try {
       const token = getToken();
       const res = await fetch("/api/system/backup", {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ password: backupPwd }),
       });
       if (!res.ok) {
-        message.error("备份失败");
+        const err = await res.json().catch(() => ({} as { error?: string }));
+        message.error(err.error || "备份失败");
         return;
       }
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `anmast-backup-${dayjs().format("YYYYMMDD-HHmmss")}.db`;
+      a.download = `anmast-backup-${dayjs().format("YYYYMMDD-HHmmss")}.bin`;
       a.click();
       URL.revokeObjectURL(url);
-      message.success("备份已下载");
+      message.success("备份已下载（已加密）");
     } catch (e) {
       message.error((e as Error).message);
+    } finally {
+      setBackupPwd("");
     }
-  };
-
-  const restoreBackup = (file: File) => {
-    doubleConfirm(
-      "恢复备份",
-      `将用「${file.name}」覆盖当前数据（会先清空当前所有用户数据），确定继续？`,
-      () => {
-        const reader = new FileReader();
-        reader.onload = async () => {
-          try {
-            const data = (reader.result as string).split(",")[1] ?? "";
-            await api.post("/api/system/restore", { data });
-            message.success("恢复成功，即将重新登录");
-            setTimeout(() => (window.location.href = "/login"), 1500);
-          } catch (e) {
-            message.error((e as Error).message);
-          }
-        };
-        reader.readAsDataURL(file);
-      },
-    );
   };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
-    if (f) restoreBackup(f);
+    if (f) {
+      setRestoreFile(f);
+      setRestorePwd("");
+      setRestorePwdModal(true);
+    }
     e.target.value = "";
+  };
+
+  const startRestore = () => {
+    if (!restorePwd) {
+      message.warning("请输入备份密码");
+      return;
+    }
+    if (!restoreFile) return;
+    setRestorePwdModal(false);
+    setRestoring(true);
+    setRestoreProgress(0);
+    const reader = new FileReader();
+    reader.onload = () => {
+      const data = (reader.result as string).split(",")[1] ?? "";
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", "/api/system/restore");
+      xhr.setRequestHeader("Content-Type", "application/json");
+      const token = getToken();
+      if (token) xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+      xhr.upload.onprogress = (ev) => {
+        if (ev.lengthComputable) setRestoreProgress(Math.round((ev.loaded / ev.total) * 100));
+      };
+      xhr.onload = () => {
+        setRestoring(false);
+        xhrRef.current = null;
+        try {
+          const r = JSON.parse(xhr.responseText) as { ok?: boolean; error?: string };
+          if (xhr.status === 200 && r.ok) {
+            message.success("恢复成功，即将重新登录");
+            setTimeout(() => (window.location.href = "/login"), 1500);
+          } else {
+            message.error(r.error || "恢复失败");
+          }
+        } catch {
+          message.error("恢复失败");
+        }
+      };
+      xhr.onerror = () => {
+        setRestoring(false);
+        xhrRef.current = null;
+        message.error("上传失败，请稍候再试");
+      };
+      xhr.onabort = () => {
+        setRestoring(false);
+        xhrRef.current = null;
+      };
+      xhrRef.current = xhr;
+      xhr.send(JSON.stringify({ data, password: restorePwd }));
+    };
+    reader.onerror = () => {
+      setRestoring(false);
+      message.error("读取文件失败");
+    };
+    reader.readAsDataURL(restoreFile);
+  };
+
+  const cancelRestore = () => {
+    xhrRef.current?.abort();
+    setRestoring(false);
+  };
+
+  const saveSessionTimeout = async () => {
+    if (sessionHours === null) {
+      message.warning("请填写免登录时长");
+      return;
+    }
+    if (!sessionPwd) {
+      message.warning("请输入当前密码验证");
+      return;
+    }
+    setSavingSession(true);
+    try {
+      await api.put("/api/settings/session-timeout", {
+        hours: sessionHours,
+        currentPassword: sessionPwd,
+      });
+      message.success("免登录时长已保存");
+      setSessionPwd("");
+    } catch (e) {
+      message.error((e as Error).message);
+    } finally {
+      setSavingSession(false);
+    }
   };
 
   const base = `${window.location.protocol}//${window.location.host}`;
@@ -394,15 +486,48 @@ curl ${base}/v1/chat/completions \\
         <Alert
           type="warning"
           showIcon
-          message="备份包含所有用户数据（配置、密钥、调用记录、对话等），恢复会先清空当前数据。"
+          message="备份包含所有用户数据（含供应商密钥），已用密码加密；恢复需输入同一密码验证。"
         />
         <Space style={{ marginTop: 16 }}>
-          <Button type="primary" onClick={downloadBackup}>
+          <Button
+            type="primary"
+            onClick={() => {
+              setBackupPwd("");
+              setBackupPwdModal(true);
+            }}
+          >
             立即备份
           </Button>
           <Button onClick={() => fileRef.current?.click()}>恢复备份</Button>
         </Space>
-        <input ref={fileRef} type="file" accept=".db" style={{ display: "none" }} onChange={handleFileSelect} />
+        <input ref={fileRef} type="file" accept=".bin,.db" style={{ display: "none" }} onChange={handleFileSelect} />
+      </Card>
+
+      <Card title="免登录时间">
+        <Alert
+          type="info"
+          showIcon
+          message="登录后可保持登录的时长（小时）。修改需要验证管理员密码。"
+        />
+        <Space style={{ marginTop: 16 }} wrap>
+          <InputNumber
+            min={0}
+            max={24 * 365}
+            value={sessionHours}
+            onChange={(v) => setSessionHours(v ?? null)}
+            style={{ width: 160 }}
+            placeholder="如 24（小时）"
+          />
+          <Input.Password
+            placeholder="当前密码验证"
+            value={sessionPwd}
+            onChange={(e) => setSessionPwd(e.target.value)}
+            style={{ width: 200 }}
+          />
+          <Button type="primary" loading={savingSession} onClick={saveSessionTimeout}>
+            保存
+          </Button>
+        </Space>
       </Card>
 
       <Card title="重置">
@@ -492,6 +617,71 @@ curl ${base}/v1/chat/completions \\
           <Descriptions.Item label="Skill 数">{sys?.skills ?? 0}</Descriptions.Item>
         </Descriptions>
       </Card>
+
+      {/* 备份密码 */}
+      <Modal
+        title="立即备份"
+        open={backupPwdModal}
+        onOk={doDownloadBackup}
+        onCancel={() => {
+          setBackupPwdModal(false);
+          setBackupPwd("");
+        }}
+        okText="备份并下载"
+      >
+        <Alert
+          type="warning"
+          showIcon
+          style={{ marginBottom: 12 }}
+          message="请设置一个备份密码，恢复时必须输入同一密码。"
+        />
+        <Input.Password
+          placeholder="备份密码"
+          value={backupPwd}
+          onChange={(e) => setBackupPwd(e.target.value)}
+        />
+      </Modal>
+
+      {/* 恢复密码 */}
+      <Modal
+        title="恢复备份"
+        open={restorePwdModal}
+        onOk={startRestore}
+        onCancel={() => {
+          setRestorePwdModal(false);
+          setRestoreFile(null);
+          setRestorePwd("");
+        }}
+        okText="开始恢复"
+      >
+        <Alert
+          type="warning"
+          showIcon
+          style={{ marginBottom: 12 }}
+          message={`将用「${restoreFile?.name ?? ""}」覆盖当前数据，需输入备份时的密码验证。`}
+        />
+        <Input.Password
+          placeholder="备份密码"
+          value={restorePwd}
+          onChange={(e) => setRestorePwd(e.target.value)}
+        />
+      </Modal>
+
+      {/* 恢复上传进度 + 取消 */}
+      <Modal
+        title="正在恢复备份"
+        open={restoring}
+        closable={false}
+        maskClosable={false}
+        footer={[
+          <Button key="cancel" danger onClick={cancelRestore}>
+            取消
+          </Button>,
+        ]}
+      >
+        <Progress percent={restoreProgress} status="active" />
+        <Typography.Text type="secondary">正在上传并恢复，请勿关闭页面…</Typography.Text>
+      </Modal>
     </Space>
   );
 }
