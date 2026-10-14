@@ -64,7 +64,7 @@ import { toReadable } from "../lib/stream.js";
 import type { ChatMessage, Provider } from "../types.js";
 import { getGlobalLiveSpeed } from "../gateway/live.js";
 import { getCompressionConfig, saveCompressionConfig, type CompressionConfig } from "../gateway/compress.js";
-import { checkForUpdate, runUpdate } from "../updater.js";
+import { checkForUpdate, runUpdate, getVersion } from "../updater.js";
 import {
   usageSummary,
   usageTimeseries,
@@ -802,7 +802,7 @@ export function registerAdminRoutes(app: FastifyInstance): void {
       models,
       mcp_servers: mcp,
       skills,
-      version: "0.1.0",
+      version: getVersion(),
       uptime: Math.floor(process.uptime()),
     };
   });

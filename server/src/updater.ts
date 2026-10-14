@@ -43,6 +43,11 @@ function readLocalVersion(): string {
   }
 }
 
+/** 读取当前运行版本号（与系统信息、更新检测共用） */
+export function getVersion(): string {
+  return readLocalVersion();
+}
+
 function compareVersions(a: string, b: string): number {
   const pa = a.split(".").map((x) => parseInt(x, 10) || 0);
   const pb = b.split(".").map((x) => parseInt(x, 10) || 0);
