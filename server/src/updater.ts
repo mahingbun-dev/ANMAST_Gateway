@@ -215,8 +215,13 @@ async function resolveBuildCmd(): Promise<string> {
 }
 
 async function runBuild(cmd: string): Promise<void> {
+  // 构建时确保 node/pnpm 所在目录在 PATH 中（launchd 进程 PATH 极简，pnpm 的 shebang 依赖 env node）
+  const nodeDir = path.dirname(process.execPath);
+  const extraDirs = [nodeDir, path.join(os.homedir(), ".local", "share", "pnpm"), "/opt/homebrew/bin", "/usr/local/bin"];
+  const PATH = [...extraDirs, process.env.PATH ?? ""].join(":");
+  const env = { ...process.env, PATH };
   await new Promise<void>((resolve, reject) => {
-    exec(cmd, { cwd: REPO_ROOT, timeout: 600000, env: process.env }, (err) => {
+    exec(cmd, { cwd: REPO_ROOT, timeout: 600000, env }, (err) => {
       if (err) reject(err);
       else resolve();
     });
