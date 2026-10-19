@@ -50,6 +50,33 @@ function parseArr(s: string | undefined): string[] {
   }
 }
 
+/** 复制文本到剪贴板（兼容非 HTTPS/局域网等无 secure context 的场景） */
+async function copyText(text: string): Promise<boolean> {
+  if (navigator.clipboard && window.isSecureContext) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch {
+      /* 回退到 execCommand */
+    }
+  }
+  try {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.style.position = "fixed";
+    ta.style.left = "-9999px";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    const ok = document.execCommand("copy");
+    document.body.removeChild(ta);
+    return ok;
+  } catch {
+    return false;
+  }
+}
+
 export default function ApiKeys() {
   const [data, setData] = useState<ApiKey[]>([]);
   const [skills, setSkills] = useState<SkillOpt[]>([]);
@@ -263,8 +290,9 @@ export default function ApiKeys() {
               <Button
                 icon={<CopyOutlined />}
                 onClick={async () => {
-                  await navigator.clipboard.writeText(createdKey);
-                  message.success("已复制");
+                  const ok = await copyText(createdKey);
+                  if (ok) message.success("已复制");
+                  else message.error("复制失败，请手动选择复制");
                 }}
               >
                 复制
