@@ -63,6 +63,7 @@ import { openaiJson, fakeOpenAIStream, genId } from "../gateway/respond.js";
 import { toReadable } from "../lib/stream.js";
 import type { ChatMessage, Provider } from "../types.js";
 import { getGlobalLiveSpeed } from "../gateway/live.js";
+import { getLatency, recordLatency } from "../latency.js";
 import { getCompressionConfig, saveCompressionConfig, type CompressionConfig } from "../gateway/compress.js";
 import { checkForUpdate, runUpdate, getVersion } from "../updater.js";
 import {
@@ -752,6 +753,19 @@ export function registerAdminRoutes(app: FastifyInstance): void {
   // 全局实时调用速度（底部状态栏每秒轮询）
   app.get("/api/usage/live", async () => {
     return getGlobalLiveSpeed();
+  });
+
+  // ---------- 客户端延迟（按来源 IP 区分，页面刷新不丢失） ----------
+  app.get("/api/latency", async (req) => {
+    return getLatency(req.ip ?? "unknown");
+  });
+
+  app.post("/api/latency", async (req, reply) => {
+    const b = (req.body ?? {}) as { ms?: number };
+    const ms = Number(b.ms);
+    if (!Number.isFinite(ms) || ms < 0) return reply.code(400).send({ error: "无效的延迟值" });
+    recordLatency(req.ip ?? "unknown", ms);
+    return getLatency(req.ip ?? "unknown");
   });
 
   // ---------- 设置 ----------
