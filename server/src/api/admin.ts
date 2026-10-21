@@ -844,9 +844,10 @@ export function registerAdminRoutes(app: FastifyInstance): void {
   });
 
   app.post("/api/system/factory-reset", async (req, reply) => {
-    // 恢复出厂设置：删除所有用户数据，恢复到初始状态
+    // 恢复出厂设置：删除所有用户数据，恢复到初始状态；可选保留用户手动添加的供应商
+    const b = (req.body ?? {}) as { keep_providers?: boolean };
     try {
-      await resetToFactory();
+      await resetToFactory(!!b.keep_providers);
       return reply.send({ ok: true });
     } catch (e) {
       return reply.code(500).send({ error: (e as Error).message });

@@ -94,7 +94,7 @@ export function closeDb(): void {
 }
 
 /** 恢复出厂设置：清空所有用户数据，重新写入默认层级与管理员 */
-export async function resetToFactory(): Promise<void> {
+export async function resetToFactory(keepProviders = false): Promise<void> {
   const tables = [
     "providers",
     "models",
@@ -109,6 +109,8 @@ export async function resetToFactory(): Promise<void> {
     "tiers",
   ];
   for (const t of tables) {
+    // 保留用户手动添加的供应商（及其模型）
+    if (keepProviders && (t === "providers" || t === "models")) continue;
     getDb().exec(`DELETE FROM ${t}`);
   }
   seedDefaults();

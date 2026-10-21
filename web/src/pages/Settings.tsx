@@ -219,18 +219,30 @@ export default function Settings() {
       },
     );
 
+  const doFactoryReset = async (keepProviders: boolean) => {
+    try {
+      await api.post("/api/system/factory-reset", { keep_providers: keepProviders });
+      message.success("已恢复出厂设置，即将跳转到登录页（默认 admin/admin123456）");
+      setTimeout(() => (window.location.href = "/login"), 1500);
+    } catch (e) {
+      message.error((e as Error).message);
+    }
+  };
+
   const factoryReset = () =>
     doubleConfirm(
       "恢复出厂设置",
       "将删除所有用户数据（供应商、模型、密钥、Skill、MCP、调用记录、对话、设置等），恢复到安装初始状态。建议先执行备份！",
-      async () => {
-        try {
-          await api.post("/api/system/factory-reset");
-          message.success("已恢复出厂设置，即将跳转到登录页（默认 admin/admin123456）");
-          setTimeout(() => (window.location.href = "/login"), 1500);
-        } catch (e) {
-          message.error((e as Error).message);
-        }
+      () => {
+        Modal.confirm({
+          title: "是否删除用户添加的供应商？",
+          content: "选择「删除供应商」将同时清除供应商页手动添加的供应商及模型；选择「保留供应商」则只清空其它数据，保留供应商与模型。",
+          okText: "删除供应商",
+          okType: "danger",
+          cancelText: "保留供应商",
+          onOk: () => doFactoryReset(false),
+          onCancel: () => doFactoryReset(true),
+        });
       },
     );
 
