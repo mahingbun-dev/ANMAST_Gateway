@@ -56,7 +56,20 @@ export default function Routing() {
     ]).then(([t, m, s]) => {
       setTiers(t);
       setModels(m);
-      setSettings(s);
+      // 处理路由模型失效/自动配置
+      const routerModels = m.filter((x) => x.is_router);
+      let next = s;
+      if (!routerModels.some((x) => x.id === s.router_model_id)) {
+        if (routerModels.length === 1) {
+          // 仅剩一个路由模型 → 自动选中并保存
+          next = { ...s, router_model_id: routerModels[0].id };
+          api.put("/api/settings", { router_model_id: routerModels[0].id }).catch(() => {});
+        } else {
+          // 无路由模型或多个路由模型 → 清空
+          next = { ...s, router_model_id: "" };
+        }
+      }
+      setSettings(next);
     });
   };
   useEffect(load, []);
@@ -96,6 +109,11 @@ export default function Routing() {
   };
 
   const routerModels = models.filter((m) => m.is_router);
+  // 有效的路由模型 id（无效时显示为空，避免乱码）
+  const routerValue =
+    settings?.router_model_id && routerModels.some((m) => m.id === settings.router_model_id)
+      ? settings.router_model_id
+      : undefined;
 
   return (
     <Space direction="vertical" size={16} style={{ width: "100%" }}>
@@ -168,7 +186,7 @@ export default function Routing() {
               <Select
                 style={{ width: "100%", marginTop: 8 }}
                 placeholder="选择判定模型（需在模型管理中将某模型标记为路由模型）"
-                value={settings.router_model_id || undefined}
+                value={routerValue}
                 onChange={(v) => setSettings({ ...settings, router_model_id: v })}
                 options={routerModels.map((m) => ({
                   value: m.id,
