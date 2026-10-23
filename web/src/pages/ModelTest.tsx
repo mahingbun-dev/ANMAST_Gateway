@@ -6,6 +6,7 @@ import {
   UserOutlined,
   ClearOutlined,
   ExperimentOutlined,
+  LoadingOutlined,
 } from "@ant-design/icons";
 import { api, getToken } from "../api";
 
@@ -22,6 +23,11 @@ interface Msg {
   content: string;
 }
 
+/** 安全的会话 ID 生成（避免 HTTP 非安全上下文下 crypto.randomUUID 不可用） */
+function genId(): string {
+  return `test_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
 /** 模型对话测试：直接测试单个模型，仅对话、不使用工具/路由 */
 export default function ModelTest() {
   const [models, setModels] = useState<Model[]>([]);
@@ -29,8 +35,24 @@ export default function ModelTest() {
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [status, setStatus] = useState("");
+  const [elapsed, setElapsed] = useState(0);
   const [conversationId, setConversationId] = useState<string>("");
   const listRef = useRef<HTMLDivElement>(null);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const startTimer = () => {
+    setElapsed(0);
+    if (timerRef.current) clearInterval(timerRef.current);
+    timerRef.current = setInterval(() => setElapsed((e) => e + 1), 1000);
+  };
+  const stopTimer = () => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+  };
+  useEffect(() => () => stopTimer(), []);
 
   useEffect(() => {
     api.get<Model[]>("/api/models").then((ms) => {
@@ -69,7 +91,9 @@ export default function ModelTest() {
     setMessages([...history, { role: "assistant", content: "" }]);
     setInput("");
     setLoading(true);
-    const cid = conversationId || crypto.randomUUID();
+    setStatus("正在思考…");
+    startTimer();
+    const cid = conversationId || genId();
     if (!conversationId) setConversationId(cid);
 
     try {
@@ -114,7 +138,10 @@ export default function ModelTest() {
               continue;
             }
             const d = o.choices?.[0]?.delta?.content;
-            if (d) acc += d;
+            if (d) {
+              acc += d;
+              if (status) setStatus("");
+            }
           } catch {
             /* ignore */
           }
@@ -142,6 +169,8 @@ export default function ModelTest() {
         return c;
       });
     } finally {
+      stopTimer();
+      setStatus("");
       setLoading(false);
     }
   };
@@ -242,6 +271,23 @@ export default function ModelTest() {
           </div>
         ))}
       </div>
+
+      {loading && (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            padding: "6px 2px 0",
+            color: "#8c8c8c",
+            fontSize: 12,
+          }}
+        >
+          <LoadingOutlined spin />
+          <span>{status || "处理中…"}</span>
+          <span>· 已用时 {elapsed}s</span>
+        </div>
+      )}
 
       <Divider style={{ margin: "12px 0" }} />
       <Space.Compact style={{ width: "100%" }}>

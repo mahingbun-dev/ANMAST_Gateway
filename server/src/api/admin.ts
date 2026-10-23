@@ -858,6 +858,12 @@ export function registerAdminRoutes(app: FastifyInstance): void {
     }
   });
 
+  // 重启服务（launchd KeepAlive 会自动拉起）
+  app.post("/api/system/restart", async (req, reply) => {
+    setTimeout(() => process.exit(0), 800);
+    return reply.send({ ok: true, message: "服务即将重启" });
+  });
+
   // 数据库文件大小等系统信息
   app.get("/api/system", async () => {
     const db = getDb();

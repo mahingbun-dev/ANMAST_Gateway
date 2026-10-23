@@ -15,6 +15,7 @@ import {
   Divider,
   Progress,
 } from "antd";
+import { ReloadOutlined } from "@ant-design/icons";
 import { api, getToken } from "../api";
 import { useCurrency } from "../currency";
 import dayjs from "dayjs";
@@ -49,6 +50,7 @@ export default function Settings() {
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [updating, setUpdating] = useState(false);
+  const [restarting, setRestarting] = useState(false);
   const [updateBackupPwdModal, setUpdateBackupPwdModal] = useState(false);
   const [updateBackupPwd, setUpdateBackupPwd] = useState("");
   const [backupPwdModal, setBackupPwdModal] = useState(false);
@@ -202,6 +204,38 @@ export default function Settings() {
       setUpdating(false);
       setUpdateBackupPwd("");
     }
+  };
+
+  const doRestart = () => {
+    Modal.confirm({
+      title: "重启服务",
+      content: "确定要重启网关服务吗？重启期间服务会短暂不可用，完成后页面会自动重连。",
+      okText: "重启",
+      onOk: async () => {
+        try {
+          await api.post("/api/system/restart");
+          message.success("服务重启中，正在等待重连…");
+          setRestarting(true);
+          for (let i = 0; i < 120; i++) {
+            await new Promise((r) => setTimeout(r, 1000));
+            try {
+              const res = await fetch("/healthz");
+              if (res.ok) {
+                message.success("服务已重启");
+                setTimeout(() => window.location.reload(), 500);
+                return;
+              }
+            } catch {
+              /* 尚未就绪 */
+            }
+          }
+          message.error("重启等待超时，请手动刷新页面");
+          setRestarting(false);
+        } catch (e) {
+          message.error((e as Error).message);
+        }
+      },
+    });
   };
 
   const resetData = () =>
@@ -683,6 +717,10 @@ curl ${base}/v1/chat/completions \\
           <Descriptions.Item label="MCP 服务器">{sys?.mcp_servers ?? 0}</Descriptions.Item>
           <Descriptions.Item label="Skill 数">{sys?.skills ?? 0}</Descriptions.Item>
         </Descriptions>
+        <Divider style={{ margin: "12px 0" }} />
+        <Button loading={restarting} onClick={doRestart} icon={<ReloadOutlined />}>
+          重启服务
+        </Button>
       </Card>
 
       {/* 备份密码 */}
