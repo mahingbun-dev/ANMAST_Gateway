@@ -3,7 +3,7 @@
 // 用法：node scripts/repair-conversations.mjs [dbPath]
 import { DatabaseSync } from "node:sqlite";
 
-const dbPath = process.argv[2] || "server/data/gateway.db";
+const dbPath = process.argv[2] || "server/data/gateway.dat";
 const db = new DatabaseSync(dbPath);
 db.exec("PRAGMA foreign_keys = ON");
 

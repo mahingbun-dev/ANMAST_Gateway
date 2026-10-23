@@ -1,14 +1,21 @@
 import { getDb } from "../index.js";
 import type { Provider, ModelConfig, Tier } from "../../types.js";
+import { encryptApiKey, decryptApiKey } from "../../secret.js";
 
 // ---------- Providers ----------
 
+/** 解密单个供应商的 api_key */
+function withDecryptedKey(p: Provider): Provider {
+  return { ...p, api_key: decryptApiKey(p.api_key) };
+}
+
 export function listProviders(): Provider[] {
-  return getDb().prepare("SELECT * FROM providers ORDER BY created_at ASC").all() as Provider[];
+  return (getDb().prepare("SELECT * FROM providers ORDER BY created_at ASC").all() as Provider[]).map(withDecryptedKey);
 }
 
 export function getProvider(id: string): Provider | undefined {
-  return getDb().prepare("SELECT * FROM providers WHERE id = ?").get(id) as Provider | undefined;
+  const p = getDb().prepare("SELECT * FROM providers WHERE id = ?").get(id) as Provider | undefined;
+  return p ? withDecryptedKey(p) : undefined;
 }
 
 export interface ProviderInput {
@@ -40,7 +47,7 @@ export function createProvider(input: ProviderInput): Provider {
       baseUrl,
       input.openai_base_url,
       input.anthropic_base_url,
-      input.api_key,
+      encryptApiKey(input.api_key),
       input.extra_headers,
       input.enabled,
       now,
@@ -67,7 +74,7 @@ export function updateProvider(id: string, patch: Partial<ProviderInput>): Provi
       next.base_url,
       next.openai_base_url,
       next.anthropic_base_url,
-      next.api_key,
+      encryptApiKey(next.api_key),
       next.extra_headers,
       next.enabled,
       next.updated_at,

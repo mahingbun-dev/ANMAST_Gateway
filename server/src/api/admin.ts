@@ -873,7 +873,7 @@ export function registerAdminRoutes(app: FastifyInstance): void {
     const b = (req.body ?? {}) as { password?: string };
     if (!b.password) return reply.code(400).send({ error: "请提供备份密码" });
     try {
-      const tmp = path.join(config.dataDir, `backup-${Date.now()}.db`);
+      const tmp = path.join(config.dataDir, `backup-${Date.now()}.dat`);
       getDb().exec(`VACUUM INTO '${tmp.replace(/'/g, "''")}'`);
       const buf = fs.readFileSync(tmp);
       fs.rmSync(tmp, { force: true });
@@ -901,7 +901,7 @@ export function registerAdminRoutes(app: FastifyInstance): void {
       if (buf.length < 16 || buf.toString("utf8", 0, 15) !== "SQLite format 3") {
         return reply.code(400).send({ error: "不是有效的 SQLite 备份文件" });
       }
-      const tmp = path.join(config.dataDir, `restore-${Date.now()}.db`);
+      const tmp = path.join(config.dataDir, `restore-${Date.now()}.dat`);
       fs.writeFileSync(tmp, buf);
       closeDb();
       fs.copyFileSync(tmp, config.dbPath);

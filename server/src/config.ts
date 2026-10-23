@@ -16,6 +16,8 @@ const envSchema = z.object({
   ADMIN_PASSWORD: z.string().min(8).default("admin123456"),
   LOG_LEVEL: z.string().default("info"),
   WEB_DIST: z.string().default(path.join(SERVER_ROOT, "..", "web", "dist")),
+  // 供应商密钥加密主密钥（留空则自动生成并保存到数据目录 gateway.key）
+  GATEWAY_SECRET: z.string().default(""),
   // 是否强制要求管理员在首次启动后修改默认密码（默认 true，但开发环境可关闭）
   REQUIRE_PASSWORD_CHANGE: z
     .string()
@@ -36,11 +38,28 @@ const env = parsed.data;
 fs.mkdirSync(env.DATA_DIR, { recursive: true });
 fs.mkdirSync(path.join(env.DATA_DIR, "skills"), { recursive: true });
 
+const DB_FILE = "gateway.dat";
+const dbPath = path.join(env.DATA_DIR, DB_FILE);
+
+// 迁移旧文件名 gateway.db → gateway.dat（含 WAL 附属文件）
+const legacyDb = path.join(env.DATA_DIR, "gateway.db");
+if (fs.existsSync(legacyDb) && !fs.existsSync(dbPath)) {
+  try {
+    fs.renameSync(legacyDb, dbPath);
+    for (const suffix of ["-wal", "-shm"]) {
+      if (fs.existsSync(legacyDb + suffix)) fs.renameSync(legacyDb + suffix, dbPath + suffix);
+    }
+  } catch {
+    /* 忽略迁移失败，继续用新文件名启动 */
+  }
+}
+
 export const config = {
   host: env.HOST,
   port: env.PORT,
   dataDir: env.DATA_DIR,
-  dbPath: path.join(env.DATA_DIR, "gateway.db"),
+  dbPath,
+  gatewaySecret: env.GATEWAY_SECRET,
   skillsDir: path.join(env.DATA_DIR, "skills"),
   adminUsername: env.ADMIN_USERNAME,
   adminPassword: env.ADMIN_PASSWORD,

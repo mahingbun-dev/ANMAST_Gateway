@@ -26,6 +26,8 @@
         <string>__ADMIN_PASSWORD__</string>
         <key>LOG_LEVEL</key>
         <string>info</string>
+        <key>GATEWAY_SECRET</key>
+        <string>__GATEWAY_SECRET__</string>
         <key>UPDATE_BUILD_CMD</key>
         <string>__UPDATE_BUILD_CMD__</string>
     </dict>

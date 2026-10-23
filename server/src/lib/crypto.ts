@@ -78,3 +78,23 @@ export function decryptBuffer(payload: Buffer, password: string): Buffer {
   decipher.setAuthTag(tag);
   return Buffer.concat([decipher.update(enc), decipher.final()]);
 }
+
+/** AES-256-GCM 加密字符串（固定 32 字节密钥），输出 base64(iv + tag + 密文) */
+export function encryptSecret(plaintext: string, key: Buffer): string {
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv("aes-256-gcm", key, iv);
+  const enc = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  return Buffer.concat([iv, tag, enc]).toString("base64");
+}
+
+/** AES-256-GCM 解密字符串；密钥错误抛异常 */
+export function decryptSecret(ciphertext: string, key: Buffer): string {
+  const buf = Buffer.from(ciphertext, "base64");
+  const iv = buf.subarray(0, 12);
+  const tag = buf.subarray(12, 28);
+  const enc = buf.subarray(28);
+  const decipher = crypto.createDecipheriv("aes-256-gcm", key, iv);
+  decipher.setAuthTag(tag);
+  return Buffer.concat([decipher.update(enc), decipher.final()]).toString("utf8");
+}

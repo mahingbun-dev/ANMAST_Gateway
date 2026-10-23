@@ -273,7 +273,8 @@ Claude Code 可直接指向网关（Anthropic 协议）。网关会自动识别�
 
 ## 数据与存储
 
-- 数据库：`<DATA_DIR>/gateway.db`（SQLite，WAL 模式），默认 `server/data/`，部署时由 launchd 指向 `~/Library/Application Support/anmast/gateway`。
+- 数据库：`<DATA_DIR>/gateway.dat`（SQLite，WAL 模式；旧版本为 `gateway.db`，启动时会自动迁移改名），默认 `server/data/`，部署时由 launchd 指向 `~/Library/Application Support/anmast/gateway`。
+- 供应商密钥加密：`providers.api_key` 使用 AES-256-GCM 加密后落盘（前缀 `enc:v1:`）。主密钥优先取环境变量 `GATEWAY_SECRET`，未设置时自动生成并保存在数据目录 `gateway.key`（权限 600）。网关客户端密钥与管理员密码仍分别为 SHA-256 哈希、scrypt 哈希存储。
 - 记录内容：每次请求的请求体/响应体（完整 messages）、token 用量（含缓存明细与压缩前后估算）、成本、耗时、状态、来源 IP、协议链路（客户端 → 上游）、会话归属；以及归一化后的逐条消息，用于对话历史浏览。
 - 会话聚合：网关自动识别 Claude Code 等客户端的 `session_id`，把同一会话的多轮请求归入同一对话并按内容去重；历史数据如需回填合并，可运行：
 
@@ -309,7 +310,7 @@ ANMAST/
 ## 注意事项
 
 - 首次启动请务必修改默认管理员密码，并妥善保管网关 API Key（完整密钥仅在创建时显示一次）。
-- 供应商 API Key 明文存储在本机 SQLite 中，请确保数据目录权限（`chmod 700`）与所在机器安全。
+- 供应商 API Key 已使用 AES-256-GCM 加密存储；主密钥来自 `GATEWAY_SECRET` 环境变量或数据目录 `gateway.key`（权限 600），请妥善保管主密钥并确保数据目录权限（`chmod 700`）与所在机器安全。更换/丢失主密钥会导致已存密钥无法解密，需重新录入。
 - 多模态图片内容会透传给上游模型，网关只做协议转换、不做识别；复杂度判定仅基于文本。
 - 重新构建前端后无需重启服务即可生效（静态资源为动态服务）；修改后端代码后需重启进程。
 - 工具调用（function calling）需要上游模型本身支持，若 Claude Code 等客户端报「tool call could not be parsed」，多为模型工具调用能力或参数格式问题。

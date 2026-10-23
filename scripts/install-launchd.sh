@@ -15,6 +15,8 @@ PLIST_DST="$HOME/Library/LaunchAgents/$LABEL.plist"
 PORT="${PORT:-4000}"
 DATA_DIR="${DATA_DIR:-$HOME/Library/Application Support/anmast/gateway}"
 ADMIN_PASSWORD="${ADMIN_PASSWORD:-admin123456}"
+# 供应商密钥加密主密钥：未指定则生成随机值
+GATEWAY_SECRET="${GATEWAY_SECRET:-$(openssl rand -hex 24)}"
 LOG_DIR="$HOME/Library/Logs/anmast"
 
 if [[ "${1:-}" == "uninstall" ]]; then
@@ -73,6 +75,7 @@ sed \
   -e "s#__PORT__#$PORT#g" \
   -e "s#__DATA_DIR__#$DATA_DIR#g" \
   -e "s#__ADMIN_PASSWORD__#$ADMIN_PASSWORD#g" \
+  -e "s#__GATEWAY_SECRET__#$GATEWAY_SECRET#g" \
   -e "s#__UPDATE_BUILD_CMD__#$UPDATE_BUILD_CMD#g" \
   -e "s#__LOG_DIR__#$LOG_DIR#g" \
   "$PLIST_SRC" > "$PLIST_DST"

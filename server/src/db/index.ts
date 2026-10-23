@@ -4,6 +4,7 @@ import { config } from "../config.js";
 import { logger } from "../logger.js";
 import { migrations, DEFAULT_TIERS } from "./schema.js";
 import { hashPassword } from "../lib/crypto.js";
+import { encryptApiKey } from "../secret.js";
 
 // 宽松类型的数据库接口，避免在每个 repository 里做类型转换。
 export interface Statement {
@@ -79,6 +80,20 @@ export async function initDb(): Promise<void> {
 
   seedDefaults();
   await seedAdmin();
+  encryptExistingProviderKeys();
+}
+
+/** 启动迁移：把 providers 表中明文密钥加密为 enc:v1:... */
+function encryptExistingProviderKeys(): void {
+  const rows = getDb().prepare("SELECT id, api_key FROM providers").all() as { id: string; api_key: string }[];
+  let migrated = 0;
+  for (const r of rows) {
+    if (r.api_key && !r.api_key.startsWith("enc:v1:")) {
+      getDb().prepare("UPDATE providers SET api_key = ? WHERE id = ?").run(encryptApiKey(r.api_key), r.id);
+      migrated++;
+    }
+  }
+  if (migrated > 0) logger.info(`已加密 ${migrated} 个供应商密钥`);
 }
 
 /** 关闭数据库（恢复备份前调用） */
