@@ -8,6 +8,7 @@ import Dashboard from "./pages/Dashboard";
 import Providers from "./pages/Providers";
 import Models from "./pages/Models";
 import Routing from "./pages/Routing";
+import ModelTest from "./pages/ModelTest";
 import Skills from "./pages/Skills";
 import Mcp from "./pages/Mcp";
 import ApiKeys from "./pages/ApiKeys";
@@ -41,6 +42,7 @@ export default function App() {
           <Route path="providers" element={<Providers />} />
           <Route path="models" element={<Models />} />
           <Route path="routing" element={<Routing />} />
+          <Route path="model-test" element={<ModelTest />} />
           <Route path="skills" element={<Skills />} />
           <Route path="mcp" element={<Mcp />} />
           <Route path="keys" element={<ApiKeys />} />

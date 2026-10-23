@@ -56,7 +56,7 @@ interface RunResult {
   toolMessages: ChatMessage[];
 }
 
-function calcCost(model: ModelConfig, usage: Usage): number {
+export function calcCost(model: ModelConfig, usage: Usage): number {
   const inPrice = model.input_price ?? 0;
   const cacheReadPrice = model.input_cache_read_price ?? 0;
   const cacheWritePrice = model.input_cache_write_price ?? 0;
@@ -109,7 +109,7 @@ function safeJson(x: unknown): string | null {
   }
 }
 
-function conversationTitle(messages: ChatMessage[]): string {
+export function conversationTitle(messages: ChatMessage[]): string {
   const first = messages.find((m) => m.role === "user" && m.content);
   const t = (first?.content ?? "").replace(/\s+/g, " ").trim();
   return t.length > 40 ? t.slice(0, 40) + "…" : t || "新对话";
@@ -679,7 +679,7 @@ function isEphemeralMessage(m: { role: string; content: string | null }): boolea
   return false;
 }
 
-function logMessages(
+export function logMessages(
   input: ChatMessage[],
   toolMessages: ChatMessage[],
   assistant: ChatMessage,

@@ -58,6 +58,7 @@ import { listServerTools, refreshServer } from "../mcp/manager.js";
 import { listProviderModelsAny, fetchModelContext, pingProvider } from "../providers/discovery.js";
 import type { UpstreamProtocol } from "../providers/index.js";
 import { handleAssistantChat, assistantChatStream } from "../assistant/service.js";
+import { modelTestChat, modelTestStream } from "../modeltest.js";
 import { importSkillFromContent, importSkillFromPath } from "../skills/importer.js";
 import { openaiJson, fakeOpenAIStream, genId } from "../gateway/respond.js";
 import { toReadable } from "../lib/stream.js";
@@ -236,6 +237,41 @@ export function registerAdminRoutes(app: FastifyInstance): void {
         created: Math.floor(Date.now() / 1000),
         protocol: "openai" as const,
       };
+      return reply.send(openaiJson(final, meta));
+    } catch (e) {
+      return reply.code(502).send({ error: (e as Error).message });
+    }
+  });
+
+  // ---------- 模型对话测试 ----------
+  app.post("/api/model-test/chat", async (req, reply) => {
+    const b = (req.body ?? {}) as {
+      model_id?: string;
+      messages?: ChatMessage[];
+      conversation_id?: string;
+      stream?: boolean;
+    };
+    if (!b.model_id || !Array.isArray(b.messages) || b.messages.length === 0) {
+      return reply.code(400).send({ error: "缺少 model_id 或 messages 字段" });
+    }
+    const conversationId = b.conversation_id || genId("conv");
+    try {
+      if (b.stream) {
+        reply.header("Content-Type", "text/event-stream");
+        reply.header("Cache-Control", "no-cache");
+        reply.header("Connection", "keep-alive");
+        reply.header("X-Conversation-Id", conversationId);
+        return reply.send(toReadable(modelTestStream(b.model_id, b.messages, conversationId, req.ip ?? null)));
+      }
+      const res = await modelTestChat(b.model_id, b.messages, conversationId, req.ip ?? null);
+      const final = { content: res.content, toolCalls: undefined, usage: res.usage };
+      const meta = {
+        model: res.modelName,
+        id: res.id ?? genId("chatcmpl"),
+        created: Math.floor(Date.now() / 1000),
+        protocol: "openai" as const,
+      };
+      reply.header("X-Conversation-Id", conversationId);
       return reply.send(openaiJson(final, meta));
     } catch (e) {
       return reply.code(502).send({ error: (e as Error).message });
