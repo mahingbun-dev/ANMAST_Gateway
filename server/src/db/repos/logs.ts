@@ -200,6 +200,23 @@ export function listMessagesByRequest(requestId: string): MessageRecord[] {
 
 // ---------- Conversations ----------
 
+/** 按「API Key + 标题」查找最近的会话（用于无会话 ID 的客户端按内容归类，如 DeepSeek Harness） */
+export function findRecentConversation(apiKeyId: string | null, title: string): string | null {
+  const since = Date.now() - 7 * 24 * 3600 * 1000;
+  const row = apiKeyId
+    ? (getDb()
+        .prepare(
+          "SELECT id FROM conversations WHERE api_key_id = ? AND title = ? AND created_at > ? ORDER BY updated_at DESC LIMIT 1",
+        )
+        .get(apiKeyId, title, since) as { id: string } | undefined)
+    : (getDb()
+        .prepare(
+          "SELECT id FROM conversations WHERE api_key_id IS NULL AND title = ? AND created_at > ? ORDER BY updated_at DESC LIMIT 1",
+        )
+        .get(title, since) as { id: string } | undefined);
+  return row?.id ?? null;
+}
+
 export function upsertConversation(conv: {
   id: string;
   api_key_id: string | null;

@@ -14,6 +14,7 @@ import {
   upsertConversation,
   bumpConversation,
   listMessagesByConversation,
+  findRecentConversation,
 } from "../db/repos/logs.js";
 import type { ParsedRequest } from "./parse.js";
 import {
@@ -279,7 +280,9 @@ export async function processChat(input: ProcessInput): Promise<GatewayResult> {
   const { protocol, parsed, apiKeyId, clientIp } = input;
   const started = Date.now();
   const requestId = genId("req");
-  const conversationId = parsed.conversationId || genId("conv");
+  const title = conversationTitle(parsed.messages);
+  // 无会话 ID 时（如 DeepSeek Harness），按「API Key + 标题」归并到最近的同一会话，避免每轮新建重复记录
+  const conversationId = parsed.conversationId || findRecentConversation(apiKeyId, title) || genId("conv");
   markActive(requestId);
 
   // 0. 上下文压缩（头部锚点 + 近期窗口 + 中间摘要/丢弃；按 API Key 启用）
@@ -399,7 +402,7 @@ export async function processChat(input: ProcessInput): Promise<GatewayResult> {
   upsertConversation({
     id: conversationId,
     api_key_id: apiKeyId,
-    title: conversationTitle(parsed.messages),
+    title,
     model: modelRequested,
   });
 
@@ -657,7 +660,7 @@ function msgSignature(m: {
   return `${m.role}\u0000${m.content ?? ""}\u0000${m.tool_call_id ?? ""}\u0000${names}`;
 }
 
-/** 判断是否为客户端注入的易变上下文（每次版本号/时间戳变化，不应重复记录到对话历史） */
+/** 判断是否为客户端注入的易变上下文（每次版本号/时间戳/快照变化，不应重复记录到对话历史） */
 function isEphemeralMessage(m: { role: string; content: string | null }): boolean {
   const c = (m.content ?? "").trim();
   if (m.role === "system") {
@@ -668,6 +671,10 @@ function isEphemeralMessage(m: { role: string; content: string | null }): boolea
   if (m.role === "user") {
     if (c.startsWith("<system-reminder>")) return true;
     if (c.startsWith("The following is")) return true;
+    // DeepSeek Harness 注入的易变上下文
+    if (c.startsWith("Current runtime context")) return true;
+    if (c.startsWith("Current DSH file policy")) return true;
+    if (c.startsWith("[model changed")) return true;
   }
   return false;
 }
