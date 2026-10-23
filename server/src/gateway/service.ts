@@ -253,6 +253,9 @@ async function runWithRetry(
   candidates: ModelWithProvider[],
   fn: (cand: ModelWithProvider) => Promise<RunResult>,
 ): Promise<RunResult> {
+  if (candidates.length === 0) {
+    throw new Error("无可用模型（目标层级无启用的模型）");
+  }
   let lastErr: unknown;
   for (const cand of candidates) {
     try {
@@ -563,7 +566,8 @@ function extractContentLength(sse: string, protocol: string): number {
 async function* streamPassthrough(ctx: PassthroughCtx): AsyncIterable<string | Uint8Array> {
   let lastErr: Error | undefined;
   startLiveStream(ctx.requestId, ctx.started);
-  for (const cand of ctx.candidates) {
+  try {
+    for (const cand of ctx.candidates) {
     try {
       const adapter = getAdapterForProtocol(getUpstreamProtocol(cand.provider, ctx.protocol));
       const req = buildRequest(cand, ctx.parsed, ctx.allTools, ctx.skillPrompt, true);
@@ -619,6 +623,11 @@ async function* streamPassthrough(ctx: PassthroughCtx): AsyncIterable<string | U
   } else {
     yield `event: error\ndata: ${JSON.stringify({ type: "error", error: { type: "gateway_error", message: msg } })}\n\n`;
   }
+  } finally {
+    // 确保客户端断开/流提前终止时也清理（避免活跃请求泄漏）
+    finishLiveStream(ctx.requestId);
+    markDone(ctx.requestId);
+  }
 }
 
 /** 消息去重签名：role + content + tool_call_id + 工具名列表（忽略易变的参数序列化细节） */
@@ -648,6 +657,21 @@ function msgSignature(m: {
   return `${m.role}\u0000${m.content ?? ""}\u0000${m.tool_call_id ?? ""}\u0000${names}`;
 }
 
+/** 判断是否为客户端注入的易变上下文（每次版本号/时间戳变化，不应重复记录到对话历史） */
+function isEphemeralMessage(m: { role: string; content: string | null }): boolean {
+  const c = (m.content ?? "").trim();
+  if (m.role === "system") {
+    if (c.startsWith("x-anthropic-billing-header")) return true;
+    if (c.startsWith("SessionStart hook")) return true;
+    if (c.startsWith("<system-reminder>")) return true;
+  }
+  if (m.role === "user") {
+    if (c.startsWith("<system-reminder>")) return true;
+    if (c.startsWith("The following is")) return true;
+  }
+  return false;
+}
+
 function logMessages(
   input: ChatMessage[],
   toolMessages: ChatMessage[],
@@ -672,6 +696,7 @@ function logMessages(
   const seen = new Set(existing.map(msgSignature));
   const rows: ReturnType<typeof toLog>[] = [];
   for (const m of [...input, ...toolMessages, assistant]) {
+    if (isEphemeralMessage(m)) continue; // 跳过易变注入上下文
     const sig = msgSignature(m);
     if (seen.has(sig)) continue;
     seen.add(sig);
